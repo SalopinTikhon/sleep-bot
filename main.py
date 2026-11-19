@@ -492,7 +492,6 @@ def time_checker():
                         penalty += 50
                         duel_loss = f"\n⚔️ Ты проиграл дуэль: <b>{rival_name}</b> забрал 50 очков!"
                         for r in data.get("rivals"):
-                        for r in data.get("rivals"):
                  if data.get("duel_rival"):
                      rival_name = data.get("duel_rival")
                      penalty += 50
