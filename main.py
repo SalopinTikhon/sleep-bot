@@ -1,7 +1,6 @@
 import sys
 import time
 import random
-import urllib.parse
 import threading
 from datetime import datetime, timedelta, timezone
 import requests
@@ -20,6 +19,7 @@ def get_msk_now():
     return datetime.now(MSK)
 
 user_settings = {}
+chat_histories = {}
 
 RIVAL_NAMES = (
     "Алексей К.",
@@ -31,9 +31,9 @@ RIVAL_NAMES = (
 )
 
 ANTI_SCROLL_TIPS = (
-    "🧠 <b>Психологический факт:</b> Бесконечная лента работает как игровой автомат. Мозг ждет «джекпот» в следующем видео, но вместо радости получает только истощение дофамина.\n\nПоложи телефон экраном вниз на 2 минуты и сделай 5 глубоких вдохов. За это я уже начислил тебе <b>+20 очков</b>!",
+    "🧠 <b>Психологический факт:</b> Бесконечная лента работает как игровой автомат. Мозг ждет «джекпот» в следующем видео, но вместо радости получает только истощение дофамина.\n\nПоложи телефон экраном вниз на 2 минуты и сделай 5 глубоких вдохов. Начислено <b>+20 очков</b>!",
     "🌬 <b>Техника «4-7-8» для быстрого сна:</b>\n1. Вдохни носом на 4 счета.\n2. Задержи дыхание на 7 счетов.\n3. Медленно выдохни ртом на 8 счетов.\n\nПовтори 3 раза — пульс замедлится сам. Держи <b>+20 очков</b> за заботу о себе!",
-    "📝 <b>Выгрузка мыслей:</b> Если голова кипит от планов на завтра, мозг боится уснуть, чтобы ничего не забыть. Просто напиши мне сюда в чат всё, что тебя тревожит — я помогу разложить это по полочкам. Бонус за осознанность: <b>+20 очков</b>!"
+    "📝 <b>Выгрузка мыслей:</b> Если голова кипит от планов на завтра, мозг боится уснуть, чтобы ничего не забыть. Просто напиши мне сюда в чат всё, что тебя тревожит — я помогу разложить это по полочкам. Бонус: <b>+20 очков</b>!"
 )
 
 def safe_edit(text, chat_id, message_id, reply_markup=None):
@@ -60,8 +60,6 @@ def get_rank(points):
     else:
         return "👑 Повелитель времени"
 
-chat_histories = {}
-
 def ask_ai_psychologist(user_id, user_text, user_data):
     if user_id not in chat_histories:
         chat_histories.update({user_id: list()})
@@ -71,7 +69,7 @@ def ask_ai_psychologist(user_id, user_text, user_data):
         "Ты — глубокий, эмпатичный, умиротворяющий ИИ-психолог и проводник в спокойный сон. "
         f"Контекст: сейчас {get_msk_now().strftime('%H:%M')} МСК, у собеседника {user_data.get('points')} очков дисциплины и цель лечь в {user_data.get('bedtime')}. "
         "Твоя задача: внимательно проанализировать конкретные слова и эмоции пользователя и ответить строго по теме его сообщения. "
-        "Говори мягко, тепло, успокаивающе, без шаблонных фраз и канцелярита (3-5 живых предложений). "
+        "Говори мягко, тепло, успокаивающе, без шаблонных фраз (3-5 живых предложений). "
         "Помоги человеку замедлиться, снять внутреннее напряжение и мягко настроиться на отдых."
     )
     
@@ -96,7 +94,6 @@ def ask_ai_psychologist(user_id, user_text, user_data):
             if choices:
                 first_choice = choices.__getitem__(0)
                 answer = first_choice.get("message").get("content").strip()
-                
                 history.append({"role": "user", "content": user_text})
                 history.append({"role": "assistant", "content": answer})
                 if len(history) > 6:
@@ -106,7 +103,6 @@ def ask_ai_psychologist(user_id, user_text, user_data):
         print(f"Ошибка ИИ: {e}")
         
     return "Я внимательно тебя слушаю. Расскажи чуть подробнее, что сейчас крутится в мыслях — давай вместе разберем это и выдохнем. 🌙"
-
 def ensure_user(user_id):
     if user_id not in user_settings:
         rivals = list()
@@ -201,12 +197,7 @@ def cmd_start(message):
 def process_back(call):
     user_id = call.from_user.id
     ensure_user(user_id)
-    safe_edit(
-        get_dashboard_text(user_id),
-        user_id,
-        call.message.message_id,
-        get_main_keyboard()
-    )
+    safe_edit(get_dashboard_text(user_id), user_id, call.message.message_id, get_main_keyboard())
 
 @bot.callback_query_handler(func=lambda call: call.data == "menu_time")
 def process_menu_time(call):
@@ -214,9 +205,7 @@ def process_menu_time(call):
     ensure_user(user_id)
     data = user_settings.get(user_id)
     safe_edit(
-        f"⏰ <b>Настройка времени отбоя (МСК)</b>\n\n"
-        f"Сейчас выбрано: <b>{data.get('bedtime')}</b>\n"
-        "Подбери комфортный час и нажми «Сохранить»:",
+        f"⏰ <b>Настройка времени отбоя (МСК)</b>\n\nСейчас выбрано: <b>{data.get('bedtime')}</b>",
         user_id,
         call.message.message_id,
         get_time_keyboard()
@@ -229,9 +218,7 @@ def process_preset(call):
     _, new_time = call.data.split("_")
     user_settings.get(user_id).update({"bedtime": new_time})
     safe_edit(
-        f"⏰ <b>Настройка времени отбоя (МСК)</b>\n\n"
-        f"Выбрано время: <b>{new_time}</b>\n"
-        "Можешь подкорректировать по 15 минут или запустить контроль:",
+        f"⏰ <b>Настройка времени отбоя (МСК)</b>\n\nВыбрано время: <b>{new_time}</b>",
         user_id,
         call.message.message_id,
         get_time_keyboard()
@@ -244,15 +231,11 @@ def process_shift(call):
     _, min_str = call.data.split("_")
     minutes = int(min_str)
     current_str = user_settings.get(user_id).get("bedtime")
-    
     dt = datetime.strptime(current_str, "%H:%M") + timedelta(minutes=minutes)
     new_time = dt.strftime("%H:%M")
     user_settings.get(user_id).update({"bedtime": new_time})
-    
     safe_edit(
-        f"⏰ <b>Настройка времени отбоя (МСК)</b>\n\n"
-        f"Выбрано время: <b>{new_time}</b>\n"
-        "Можешь подкорректировать по 15 минут или запустить контроль:",
+        f"⏰ <b>Настройка времени отбоя (МСК)</b>\n\nВыбрано время: <b>{new_time}</b>",
         user_id,
         call.message.message_id,
         get_time_keyboard()
@@ -277,22 +260,20 @@ def process_save(call):
     
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu"))
-    
     safe_edit(
         f"✅ <b>Контракт со сном активирован!</b>\n\n"
         f"• В <b>{prep_dt.strftime('%H:%M')}</b> мягко напомню замедлиться.\n"
-        f"• В <b>{bedtime_str}</b> проверю, в кровати ли ты.\n\n"
-        "Если станет скучно или захочется поболтать перед сном — просто напиши мне любое сообщение!",
+        f"• В <b>{bedtime_str}</b> проверю, в кровати ли ты.",
         user_id,
         call.message.message_id,
         markup
     )
-
 @bot.callback_query_handler(func=lambda call: call.data == "menu_duel")
 def process_menu_duel(call):
     user_id = call.from_user.id
     ensure_user(user_id)
     data = user_settings.get(user_id)
+    
     markup = types.InlineKeyboardMarkup(row_width=2)
     for idx, r in enumerate(data.get("rivals")):
         markup.add(types.InlineKeyboardButton(f"⚔️ {r.get('name')} ({r.get('points')} очк.)", callback_data=f"duel_{idx}"))
@@ -301,9 +282,8 @@ def process_menu_duel(call):
     safe_edit(
         "⚔️ <b>ДУЭЛЬ ЗА ОЧКИ РЕЖИМА</b>\n\n"
         "Выбери соперника на сегодняшний вечер:\n"
-        "• Если ты ляжешь вовремя — заберешь <b>+50 очков</b> прямо из его копилки!\n"
-        "• Если сорвешь отбой — твои <b>50 очков</b> уйдут ему.\n\n"
-        "Кому бросим вызов?",
+        "• Если ляжешь вовремя — заберешь <b>+50 очков</b> у соперника!\n"
+        "• Если сорвешь отбой — твои <b>50 очков</b> уйдут ему.",
         user_id,
         call.message.message_id,
         markup
@@ -316,16 +296,12 @@ def process_start_duel(call):
     data = user_settings.get(user_id)
     _, idx_str = call.data.split("_")
     rival = data.get("rivals").__getitem__(int(idx_str))
-    
     data.update({"duel_rival": rival.get("name")})
     
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu"))
-    
     safe_edit(
-        f"🔥 <b>Вызов принят!</b>\n\n"
-        f"Сегодня вечером ты соревнуешься с <b>{rival.get('name')}</b>.\n"
-        f"Участник уже получил уведомление и готовится лечь вовремя. Не дай ему забрать твои очки!",
+        f"🔥 <b>Вызов принят!</b>\n\nСегодня вечером ты соревнуешься с <b>{rival.get('name')}</b>. Не дай ему забрать твои очки!",
         user_id,
         call.message.message_id,
         markup
@@ -341,13 +317,7 @@ def process_anti_scroll(call):
     tip = random.choice(ANTI_SCROLL_TIPS)
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu"))
-    
-    safe_edit(
-        f"🆘 <b>АНТИ-ЗАЛИПАНИЕ</b>\n\n{tip}",
-        user_id,
-        call.message.message_id,
-        markup
-    )
+    safe_edit(f"🆘 <b>АНТИ-ЗАЛИПАНИЕ</b>\n\n{tip}", user_id, call.message.message_id, markup)
 
 @bot.callback_query_handler(func=lambda call: call.data == "morning_checkin")
 def process_morning_checkin(call):
@@ -358,12 +328,7 @@ def process_morning_checkin(call):
     if data.get("checkin_done"):
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu"))
-        safe_edit(
-            "☀️ Ты уже проходил утренний чек-ин сегодня! Возвращайся завтра утром за новой порцией баллов.",
-            user_id,
-            call.message.message_id,
-            markup
-        )
+        safe_edit("☀️ Ты уже проходил утренний чек-ин сегодня! Возвращайся завтра утром.", user_id, call.message.message_id, markup)
         return
         
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -372,12 +337,7 @@ def process_morning_checkin(call):
         types.InlineKeyboardButton("😐 Нормально, но можно лучше (+25 очк.)", callback_data="mood_ok"),
         types.InlineKeyboardButton("😴 Разбит, лег слишком поздно (+15 очк.)", callback_data="mood_bad")
     )
-    safe_edit(
-        "☀️ <b>УТРЕННИЙ ЧЕК-ИН</b>\n\nКак ты чувствуешь себя после пробуждения?",
-        user_id,
-        call.message.message_id,
-        markup
-    )
+    safe_edit("☀️ <b>УТРЕННИЙ ЧЕК-ИН</b>\n\nКак ты чувствуешь себя после пробуждения?", user_id, call.message.message_id, markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("mood_"))
 def process_mood(call):
@@ -385,28 +345,17 @@ def process_mood(call):
     ensure_user(user_id)
     data = user_settings.get(user_id)
     _, mood = call.data.split("_")
-    
     bonus = 15 if mood == "bad" else 25
-    data.update({
-        "points": data.get("points") + bonus,
-        "checkin_done": True
-    })
+    data.update({"points": data.get("points") + bonus, "checkin_done": True})
     
     replies = {
-        "great": "Вот что делает вовремя начатый сон! Энергия на максимуме, пусть день пройдет продуктивно! 🚀",
-        "ok": "Отличное начало! Если сегодня ляжешь на 15 минут раньше, завтра утром почувствуешь еще больше легкости. 🌤",
-        "bad": "Ничего страшного, у всех бывают тяжелые ночи. Не ругай себя — просто попей воды и сегодня вечером ляг пораньше. Я помогу! 💙"
+        "great": "Вот что делает вовремя начатый сон! Энергия на максимуме! 🚀",
+        "ok": "Отличное начало! Если сегодня ляжешь на 15 минут раньше, завтра почувствуешь еще больше легкости. 🌤",
+        "bad": "Ничего страшного, у всех бывают тяжелые ночи. Не ругай себя — сегодня вечером ляг пораньше. Я помогу! 💙"
     }
-    
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu"))
-    
-    safe_edit(
-        f"✨ <b>Начислено +{bonus} очков энергии!</b>\n\n{replies.get(mood)}",
-        user_id,
-        call.message.message_id,
-        markup
-    )
+    safe_edit(f"✨ <b>Начислено +{bonus} очков энергии!</b>\n\n{replies.get(mood)}", user_id, call.message.message_id, markup)
 
 @bot.callback_query_handler(func=lambda call: call.data == "leaderboard")
 def process_leaderboard(call):
@@ -434,18 +383,11 @@ def process_leaderboard(call):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("⚔️ Бросить вызов", callback_data="menu_duel"))
     markup.add(types.InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu"))
-    
-    safe_edit(
-        "\n".join(lines),
-        user_id,
-        call.message.message_id,
-        markup
-    )
+    safe_edit("\n".join(lines), user_id, call.message.message_id, markup)
 
 def send_bedtime_question(user_id):
     data = user_settings.get(user_id)
     duel_text = f"\n⚔️ На кону победа в дуэли против <b>{data.get('duel_rival')}</b>!" if data.get("duel_rival") else ""
-    
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
         types.InlineKeyboardButton("😴 Я в кровати! (+50 очков)", callback_data="in_bed"),
@@ -453,8 +395,7 @@ def send_bedtime_question(user_id):
     )
     bot.send_message(
         user_id,
-        f"⏰ <b>Время отбоя!</b>\n"
-        f"Не поддавайся на уговоры мозга «посмотреть еще 5 минут».{duel_text}\n\n"
+        f"⏰ <b>Время отбоя!</b>{duel_text}\n"
         f"Если не ляжешь в течение 45 минут, сгорит <b>100 очков</b> и серия из <b>{data.get('streak')} дн.</b>!",
         reply_markup=markup,
         parse_mode="HTML"
@@ -499,16 +440,10 @@ def process_snooze(call):
     user_id = call.from_user.id
     ensure_user(user_id)
     data = user_settings.get(user_id)
-    
     snooze_dt = get_msk_now() + timedelta(minutes=15)
-    data.update({
-        "points": max(0, data.get("points") - 15),
-        "snooze_until": snooze_dt.strftime("%H:%M")
-    })
-    
+    data.update({"points": max(0, data.get("points") - 15), "snooze_until": snooze_dt.strftime("%H:%M")})
     safe_edit(
-        f"⏳ <b>Отсрочка: -15 очков.</b> Осталось: <b>{data.get('points')}</b>.\n"
-        "Завершай дела быстрее, напишу снова через 15 минут!",
+        f"⏳ <b>Отсрочка: -15 очков.</b> Осталось: <b>{data.get('points')}</b>.\nНапишу снова через 15 минут!",
         user_id,
         call.message.message_id
     )
@@ -520,7 +455,7 @@ def handle_text_chat(message):
     data = user_settings.get(user_id)
     
     bot.send_chat_action(user_id, 'typing')
-    reply = ask_ai_psychologist(message.text, data)
+    reply = ask_ai_psychologist(user_id, message.text, data)
     bot.send_message(user_id, reply)
 
 def time_checker():
@@ -533,30 +468,21 @@ def time_checker():
             for user_id, data in list(user_settings.items()):
                 if now_str == "23:45":
                     update_rivals(user_id)
-                    
                 if not data.get("active"):
                     continue
-                
                 if now_str == data.get("prep_time"):
                     bot.send_message(
                         user_id,
-                        "🌙 <b>До сна осталось 30 минут!</b>\n"
-                        "Приглуши свет и начни замедляться. Если в голове крутятся мысли или тревога — просто напиши мне сюда, мы всё обсудим.",
+                        "🌙 <b>До сна осталось 30 минут!</b>\nПриглуши свет и начни замедляться. Если тревожно — напиши мне сюда.",
                         parse_mode="HTML"
                     )
-                
                 if now_str == data.get("bedtime"):
                     deadline_dt = now + timedelta(minutes=45)
-                    data.update({
-                        "waiting_confirm": True,
-                        "deadline": deadline_dt.strftime("%H:%M")
-                    })
+                    data.update({"waiting_confirm": True, "deadline": deadline_dt.strftime("%H:%M")})
                     send_bedtime_question(user_id)
-                
                 if now_str == data.get("snooze_until"):
                     data.update({"snooze_until": None})
                     send_bedtime_question(user_id)
-                
                 if data.get("waiting_confirm") and now_str == data.get("deadline"):
                     lost_streak = data.get("streak")
                     penalty = 100
@@ -564,11 +490,11 @@ def time_checker():
                     if data.get("duel_rival"):
                         rival_name = data.get("duel_rival")
                         penalty += 50
-                        duel_loss = f"\n⚔️ Ты также проиграл дуэль: <b>{rival_name}</b> забрал 50 очков!"
+                        duel_loss = f"\n⚔️ Ты проиграл дуэль: <b>{rival_name}</b> забрал 50 очков!"
+                        for r in data.get("rivals"):
                         for r in data.get("rivals"):
                             if r.get("name") == rival_name:
                                 r.update({"points": r.get("points") + 50})
-                                
                     new_points = max(0, data.get("points") - penalty)
                     data.update({
                         "waiting_confirm": False,
@@ -578,16 +504,14 @@ def time_checker():
                         "streak": 0,
                         "points": new_points
                     })
-                    
                     bot.send_message(
                         user_id,
                         f"💥 <b>Режим сорван! Сгорело {penalty} очков.</b>{duel_loss}\n"
-                        f"Цепочка из <b>{lost_streak} дн.</b> обнулилась, текущий баланс: <b>{new_points} очков</b>.\n\n"
-                        "Не ругай себя — просто закрой всё прямо сейчас и ложись спать, чтобы завтра начать с чистого листа.",
+                        f"Цепочка из <b>{lost_streak} дн.</b> обнулилась, баланс: <b>{new_points} очков</b>.",
                         parse_mode="HTML"
                     )
         time.sleep(5)
 
 threading.Thread(target=time_checker, daemon=True).start()
-print("Бот с ИИ-психологом и дуэлями успешно запущен!")
+print("Бот успешно запущен в облаке!")
 bot.infinity_polling(skip_pending=True)
