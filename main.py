@@ -1,50 +1,3 @@
-chat_histories = {}
-
-def ask_ai_psychologist(user_id, user_text, user_data):
-    if user_id not in chat_histories:
-        chat_histories.update({user_id: list()})
-    history = chat_histories.get(user_id)
-    
-    system_prompt = (
-        "Ты — глубокий, эмпатичный, умиротворяющий ИИ-психолог и проводник в спокойный сон. "
-        f"Контекст: сейчас {get_msk_now().strftime('%H:%M')} МСК, у собеседника {user_data.get('points')} очков дисциплины и цель лечь в {user_data.get('bedtime')}. "
-        "Твоя задача: внимательно проанализировать конкретные слова и эмоции пользователя и ответить строго по теме его сообщения. "
-        "Говори мягко, тепло, успокаивающе, без шаблонных фраз и канцелярита (3-5 живых предложений). "
-        "Помоги человеку замедлиться, снять внутреннее напряжение и мягко настроиться на отдых."
-    )
-    
-    messages = list()
-    messages.append({"role": "system", "content": system_prompt})
-    for msg in history:
-        messages.append(msg)
-    messages.append({"role": "user", "content": user_text})
-    
-    url = "https://pollinations.ai"
-    payload = {
-        "model": "openai",
-        "messages": messages,
-        "temperature": 0.8
-    }
-    
-    try:
-        resp = requests.post(url, json=payload, timeout=20)
-        if resp.status_code == 200:
-            data_json = resp.json()
-            choices = data_json.get("choices")
-            if choices:
-                first_choice = choices.__getitem__(0)
-                answer = first_choice.get("message").get("content").strip()
-                
-                history.append({"role": "user", "content": user_text})
-                history.append({"role": "assistant", "content": answer})
-                if len(history) > 6:
-                    chat_histories.update({user_id: history.__getitem__(slice(-6, None))})
-                return answer
-    except Exception as e:
-        print(f"Ошибка ИИ: {e}")
-        
-    return "Я внимательно тебя слушаю. Расскажи чуть подробнее, что сейчас крутится в мыслях — давай вместе разберем это и выдохнем. 🌙"
-
 import sys
 import time
 import random
@@ -107,25 +60,52 @@ def get_rank(points):
     else:
         return "👑 Повелитель времени"
 
-def ask_ai_psychologist(user_text, user_data):
+chat_histories = {}
+
+def ask_ai_psychologist(user_id, user_text, user_data):
+    if user_id not in chat_histories:
+        chat_histories.update({user_id: list()})
+    history = chat_histories.get(user_id)
+    
     system_prompt = (
-        "Ты — теплый, мудрый и психологически поддерживающий ИИ-напарник в Telegram-боте для контроля сна. "
-        f"У пользователя сейчас {user_data.get('points')} очков, серия {user_data.get('streak')} дней, время отбоя {user_data.get('bedtime')}. "
-        "Отвечай коротко (3-5 предложений), по-дружески, с эмпатией и легким юмором. "
-        "Никогда не ругай и не осуждай. Помогай мягко переключиться с тревожных мыслей или желания сидеть в телефоне на спокойный отдых."
+        "Ты — глубокий, эмпатичный, умиротворяющий ИИ-психолог и проводник в спокойный сон. "
+        f"Контекст: сейчас {get_msk_now().strftime('%H:%M')} МСК, у собеседника {user_data.get('points')} очков дисциплины и цель лечь в {user_data.get('bedtime')}. "
+        "Твоя задача: внимательно проанализировать конкретные слова и эмоции пользователя и ответить строго по теме его сообщения. "
+        "Говори мягко, тепло, успокаивающе, без шаблонных фраз и канцелярита (3-5 живых предложений). "
+        "Помоги человеку замедлиться, снять внутреннее напряжение и мягко настроиться на отдых."
     )
-    full_prompt = f"{system_prompt}\n\nСообщение пользователя: {user_text}\nТвой ответ:"
-    encoded = urllib.parse.quote(full_prompt)
-    url = f"https://pollinations.ai{encoded}"
+    
+    messages = list()
+    messages.append({"role": "system", "content": system_prompt})
+    for msg in history:
+        messages.append(msg)
+    messages.append({"role": "user", "content": user_text})
+    
+    url = "https://pollinations.ai"
+    payload = {
+        "model": "openai",
+        "messages": messages,
+        "temperature": 0.8
+    }
     
     try:
-        resp = requests.get(url, timeout=15)
-        if resp.status_code == 200 and resp.text.strip():
-            return resp.text.strip()
+        resp = requests.post(url, json=payload, timeout=20)
+        if resp.status_code == 200:
+            data_json = resp.json()
+            choices = data_json.get("choices")
+            if choices:
+                first_choice = choices.__getitem__(0)
+                answer = first_choice.get("message").get("content").strip()
+                
+                history.append({"role": "user", "content": user_text})
+                history.append({"role": "assistant", "content": answer})
+                if len(history) > 6:
+                    chat_histories.update({user_id: history.__getitem__(slice(-6, None))})
+                return answer
     except Exception as e:
         print(f"Ошибка ИИ: {e}")
         
-    return "Я рядом и слышу тебя. Иногда мозгу просто нужно выговориться перед сном. Сделай глубокий вдох, отпусти дневную суету — завтра ты обязательно со всем справишься. 🌙"
+    return "Я внимательно тебя слушаю. Расскажи чуть подробнее, что сейчас крутится в мыслях — давай вместе разберем это и выдохнем. 🌙"
 
 def ensure_user(user_id):
     if user_id not in user_settings:
