@@ -151,6 +151,13 @@ def get_dashboard_text(user_id):
         "━━━━━━━━━━━━━━━━━━━━\n"
         "💬 <i>Можешь просто написать мне в чат, если тревожно, скучно или не спится — я отвечу как ИИ-психолог!</i>"
     )
+def get_bottom_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(
+        types.KeyboardButton("🏠 Главное меню"),
+        types.KeyboardButton("🆘 Хочу залипнуть")
+    )
+    return markup
 
 def get_main_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=2)
@@ -186,6 +193,11 @@ def get_time_keyboard():
 def cmd_start(message):
     user_id = message.from_user.id
     ensure_user(user_id)
+    bot.send_message(
+        user_id,
+        "✨ Нижняя панель быстрого доступа подключена!",
+        reply_markup=get_bottom_menu()
+    )
     bot.send_message(
         user_id,
         get_dashboard_text(user_id),
@@ -453,6 +465,21 @@ def handle_text_chat(message):
     user_id = message.from_user.id
     ensure_user(user_id)
     data = user_settings.get(user_id)
+    
+    if message.text == "🏠 Главное меню":
+        bot.send_message(
+            user_id,
+            get_dashboard_text(user_id),
+            reply_markup=get_main_keyboard(),
+            parse_mode="HTML"
+        )
+        return
+        
+    if message.text == "🆘 Хочу залипнуть":
+        data.update({"points": data.get("points") + 20})
+        tip = random.choice(ANTI_SCROLL_TIPS)
+        bot.send_message(user_id, f"🆘 <b>АНТИ-ЗАЛИПАНИЕ</b>\n\n{tip}", parse_mode="HTML")
+        return
     
     bot.send_chat_action(user_id, 'typing')
     reply = ask_ai_psychologist(user_id, message.text, data)
