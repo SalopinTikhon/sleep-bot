@@ -11,7 +11,7 @@ from telebot import types
 sys.stdout.reconfigure(line_buffering=True)
 
 # Вставьте сюда ваш токен от @BotFather внутри кавычек
-TOKEN = "ВАШ_ТОКЕН_ОТ_BOTFATHER"
+TOKEN = "9208055776:AAE5l3eGpfIBkSoF6yk1IMCIhagmw8hICEQ"
 bot = telebot.TeleBot(TOKEN)
 
 MSK = timezone(timedelta(hours=3))
