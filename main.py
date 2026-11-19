@@ -79,7 +79,7 @@ def ask_ai_psychologist(user_id, user_text, user_data):
         messages.append(msg)
     messages.append({"role": "user", "content": user_text})
     
-    url = "https://pollinations.ai"
+    url = "https://text.pollinations.ai/openai"
     payload = {
         "model": "openai",
         "messages": messages,
