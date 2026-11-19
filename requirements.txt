@@ -1,2 +1,9 @@
-pyTelegramBotAPI
-requests
+@bot.message_handler(func=lambda message: True)
+def handle_text_chat(message):
+    user_id = message.from_user.id
+    ensure_user(user_id)
+    data = user_settings.get(user_id)
+    
+    bot.send_chat_action(user_id, 'typing')
+    reply = ask_ai_psychologist(user_id, message.text, data)
+    bot.send_message(user_id, reply)
