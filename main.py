@@ -492,26 +492,25 @@ def time_checker():
                         penalty += 50
                         duel_loss = f"\n⚔️ Ты проиграл дуэль: <b>{rival_name}</b> забрал 50 очков!"
                         for r in data.get("rivals"):
-                 if data.get("duel_rival"):
-                     rival_name = data.get("duel_rival")
-                     penalty += 50
-                     duel_loss = f"\n⚔️ Ты проиграл дуэль: <b>{rival_name}</b> забрал 50 очков!"
-                     for r in data.get("rivals"):
-                         if r.get("name") == rival_name:
-                             r.update({"points": r.get("points") + 50})
-                 new_points = max(0, data.get("points") - penalty)
-                 data.update({
-                     "waiting_confirm": False,
-                     "deadline": None,
-                     "snooze_until": None,
-                     "duel_rival": None,
-                     "streak": 0,
-                     "points": new_points
-                 })
-                 bot.send_message(
-                     user_id,
-                     f"💥 <b>Режим сорван! Сгорело {penalty} очков.</b>{duel_loss}\n"
-                     f"Цепочка из <b>{lost_streak} дн.</b> обнулилась, баланс: <b>{new_points} очков</b>.",
-                     parse_mode="HTML"
-                 )
-     time.sleep(5)
+                            if r.get("name") == rival_name:
+                                r.update({"points": r.get("points") + 50})
+                    new_points = max(0, data.get("points") - penalty)
+                    data.update({
+                        "waiting_confirm": False,
+                        "deadline": None,
+                        "snooze_until": None,
+                        "duel_rival": None,
+                        "streak": 0,
+                        "points": new_points
+                    })
+                    bot.send_message(
+                        user_id,
+                        f"💥 <b>Режим сорван! Сгорело {penalty} очков.</b>{duel_loss}\n"
+                        f"Цепочка из <b>{lost_streak} дн.</b> обнулилась, баланс: <b>{new_points} очков</b>.",
+                        parse_mode="HTML"
+                    )
+        time.sleep(5)
+
+threading.Thread(target=time_checker, daemon=True).start()
+print("Бот успешно запущен в облаке!")
+bot.infinity_polling(skip_pending=True)
