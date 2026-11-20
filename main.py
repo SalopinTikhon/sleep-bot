@@ -68,59 +68,33 @@ def ask_ai_psychologist(user_id, user_text, data):
         chat_histories[user_id] = []
 
     system_prompt = (
-        f"Ты — профессиональный, эмпатичный ИИ-психолог и коуч по гигиене сна, созданный специально для настройки "
-        f"здорового режима дня и отказа от ночного залипания в телефоне. "
-        f"Текущее время отбоя пользователя: {data.get('bedtime')}, серия без срывов: {data.get('streak')} дн. "
-        f"Внимательно анализируй контекст прошлых сообщений, отвечай глубоко, тепло и по делу (3–5 предложений), "
-        f"помогай снизить вечернюю тревогу и мягко направляй ко сну."
+        f"Ты — профессиональный, бережный ИИ-психолог и коуч по гигиене сна. "
+        f"Время отбоя пользователя: {data.get('bedtime')}, серия без срывов: {data.get('streak')} дн. "
+        f"Отвечай по-русски, тепло, осмысленно и по делу (2–4 предложения), помогай отложить телефон и уснуть."
     )
 
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(chat_histories[user_id][-6:])
     messages.append({"role": "user", "content": user_text})
 
-    proxies = {"http": PROXY_URL, "https": PROXY_URL} if PROXY_URL else None
-
-    # 1. Пробуем сверхбыстрый Groq API (если вписан ключ)
-    if GROQ_KEY and "gsk_" in GROQ_KEY:
-        try:
-            response = requests.post(
-                "https://groq.com",
-                headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
-                json={"model": "llama-3.3-70b-versatile", "messages": messages, "temperature": 0.7, "max_tokens": 400},
-                proxies=proxies,
-                timeout=8
-            )
-            if response.status_code == 200:
-                choices = response.json().get("choices")
-                if choices:
-                    reply = choices.pop(0)["message"]["content"].strip()
-                    chat_histories[user_id].append({"role": "user", "content": user_text})
-                    chat_histories[user_id].append({"role": "assistant", "content": reply})
-                    return reply
-        except Exception as e:
-            print(f"Groq недоступен: {e}")
-
-    # 2. Резервный бесплатный ИИ-сервер (работает без ключа и не конфликтует с GitHub)
     try:
-        res2 = requests.post(
+        res = requests.post(
             "https://pollinations.ai",
-            json={"model": "openai", "messages": messages, "temperature": 0.7},
-            proxies=proxies,
-            timeout=12
+            json={"messages": messages, "model": "openai", "seed": random.randint(1, 99999)},
+            timeout=15
         )
-        if res2.status_code == 200:
-            choices2 = res2.json().get("choices")
-            if choices2:
-                reply2 = choices2.pop(0)["message"]["content"].strip()
-                chat_histories[user_id].append({"role": "user", "content": user_text})
-                chat_histories[user_id].append({"role": "assistant", "content": reply2})
-                return reply2
+        if res.status_code == 200 and res.text.strip():
+            reply = res.text.strip()
+            # Отсекаем случайную рекламу в конце бесплатного ответа
+            if "---" in reply:
+                reply = reply.split("---").strip()
+            chat_histories[user_id].append({"role": "user", "content": user_text})
+            chat_histories[user_id].append({"role": "assistant", "content": reply})
+            return reply
     except Exception as e:
-        print(f"Резервный ИИ недоступен: {e}")
+        print(f"Ошибка ИИ: {e}")
 
-    return "🌙 Я рядом и внимательно слушаю тебя. Расскажи подробнее, какие мысли сейчас крутятся в голове и мешают расслабиться?"
-
+    return "🌙 Я рядом и внимательно слушаю тебя. Расскажи подробнее, что мешает тебе расслабиться перед сном?"
 
 # --- ПОСТОЯННАЯ НИЖНЯЯ ПАНЕЛЬ НАВИГАЦИИ ---
 def get_bottom_menu():
