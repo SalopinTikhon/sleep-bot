@@ -254,6 +254,10 @@ def handle_callbacks(call):
         bot.send_message(
             user_id,
             f"⚔️ <b>Вызов брошен!</b> Твой соперник на сегодня: <b>{rival['name']}</b>.\n"
+                        f"Ляг спать вовремя — получишь <b>+50 бонусных очков</b>. Сорвёшь режим — потеряешь 50 очков!",
+            parse_mode="HTML"
+        )
+
     elif call.data == "clear_ai":
         chat_histories[user_id] = []
         bot.answer_callback_query(call.id, "Память диалога очищена 🔄")
