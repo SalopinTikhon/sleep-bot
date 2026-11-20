@@ -1,3 +1,4 @@
+import os
 import socket
 import time
 import random
@@ -9,20 +10,19 @@ import urllib3.util.connection as urllib3_cn
 import telebot
 from telebot import types
 
-# Принудительно используем надёжный IPv4 (лечит ошибку Network is unreachable на хостингах)
+# Принудительный IPv4 (убирает ошибку Network is unreachable на серверах хостинга)
 urllib3_cn.allowed_gai_family = lambda: socket.AF_INET
 
 # ==========================================
-# НАСТРОЙКИ БОТА (ЗАПОЛНИТЕ ТОЛЬКО ТОКЕН)
+# НАСТРОЙКИ ПЕРВОГО БОТА
 # ==========================================
-BOT_TOKEN = "9208055776:AAE5l3eGpfIBkSoF6yk1IMCIhagmw8hICEQ"
+BOT_TOKEN = "СЮДА_ВСТАВЬТЕ_ТОКЕН_ПЕРВОГО_БОТА"
 
-# Оставьте пустым "", если репозиторий на GitHub публичный (тогда заработает резервный ИИ без ключа).
-# Если загружаете файл напрямую на Bothost — можете вписать сюда свой ключ Groq ("gsk_...").
-GROQ_KEY = ""
+# Если захотите подключить Groq в этом боте без блокировки GitHub,
+# впишите ключ в "Переменные окружения" на Bothost под именем GROQ_API_KEY
+GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # Если сервер Bothost в РФ блокирует доступ к Telegram, впишите сюда прокси (например: "socks5h://user:pass@ip:port")
-# Если прокси не нужен — оставьте пустые кавычки ""
 PROXY_URL = ""
 # ==========================================
 
@@ -68,35 +68,65 @@ def ask_ai_psychologist(user_id, user_text, data):
         chat_histories[user_id] = []
 
     system_prompt = (
-        f"Ты — профессиональный, бережный ИИ-психолог и коуч по гигиене сна. "
-        f"Время отбоя пользователя: {data.get('bedtime')}, серия без срывов: {data.get('streak')} дн. "
-        f"Отвечай по-русски, тепло, осмысленно и по делу (2–4 предложения), помогай отложить телефон и уснуть."
+        f"Ты — профессиональный, бережный ИИ-психолог и коуч по гигиене сна, созданный для настройки "
+        f"здорового режима дня и отказа от ночного залипания в телефоне. "
+        f"Текущее время отбоя пользователя: {data.get('bedtime')}, серия без срывов: {data.get('streak')} дн. "
+        f"Отвечай строго на русском языке, тепло, осмысленно и по делу (2–4 предложения), "
+        f"опирайся на прошлые реплики диалога, помогай снизить тревогу и мягко направляй ко сну."
     )
 
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(chat_histories[user_id][-6:])
     messages.append({"role": "user", "content": user_text})
 
+    proxies = {"http": PROXY_URL, "https": PROXY_URL} if PROXY_URL else None
+
+    # 1. Если в переменных окружения есть ключ Groq — используем его (ответ за 1 сек)
+    if GROQ_KEY and "gsk_" in GROQ_KEY:
+        try:
+            res_groq = requests.post(
+                "https://groq.com",
+                headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
+                json={"model": "llama-3.3-70b-versatile", "messages": messages, "temperature": 0.7, "max_tokens": 350},
+                proxies=proxies,
+                timeout=8
+            )
+            if res_groq.status_code == 200:
+                choices = res_groq.json().get("choices")
+                if choices:
+                    reply = choices.pop(0)["message"]["content"].strip()
+                    if reply:
+                        chat_histories[user_id].append({"role": "user", "content": user_text})
+                        chat_histories[user_id].append({"role": "assistant", "content": reply})
+                        return reply
+        except Exception as e:
+            print(f"Groq недоступен: {e}")
+
+    # 2. Основной бесплатный канал Pollinations с моделью openai (чистый текст без лишних обёрток)
     try:
-        res = requests.post(
+        res_poll = requests.post(
             "https://pollinations.ai",
-            json={"messages": messages, "model": "openai", "seed": random.randint(1, 99999)},
+            json={"messages": messages, "model": "openai", "seed": random.randint(1, 999999)},
+            proxies=proxies,
             timeout=15
         )
-        if res.status_code == 200 and res.text.strip():
-            reply = res.text.strip()
-            # Отсекаем случайную рекламу в конце бесплатного ответа
+        if res_poll.status_code == 200 and res_poll.text.strip():
+            reply = res_poll.text.strip()
+            # Убираем возможную рекламную подпись в конце бесплатного ответа
             if "---" in reply:
-                reply = reply.split("---").strip()
-            chat_histories[user_id].append({"role": "user", "content": user_text})
-            chat_histories[user_id].append({"role": "assistant", "content": reply})
-            return reply
+                reply = reply.split("---").pop(0).strip()
+            if "**Sponsor**" in reply:
+                reply = reply.split("**Sponsor**").pop(0).strip()
+            if reply:
+                chat_histories[user_id].append({"role": "user", "content": user_text})
+                chat_histories[user_id].append({"role": "assistant", "content": reply})
+                return reply
     except Exception as e:
-        print(f"Ошибка ИИ: {e}")
+        print(f"Ошибка Pollinations: {e}")
 
-    return "🌙 Я рядом и внимательно слушаю тебя. Расскажи подробнее, что мешает тебе расслабиться перед сном?"
+    return "🌙 Я рядом и внимательно слушаю тебя. Расскажи подробнее, какие мысли сейчас мешают тебе расслабиться перед сном?"
 
-# --- ПОСТОЯННАЯ НИЖНЯЯ ПАНЕЛЬ НАВИГАЦИИ ---
+
 def get_bottom_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row(
@@ -224,10 +254,6 @@ def handle_callbacks(call):
         bot.send_message(
             user_id,
             f"⚔️ <b>Вызов брошен!</b> Твой соперник на сегодня: <b>{rival['name']}</b>.\n"
-            f"Ляг спать вовремя — получишь <b>+50 бонусных очков</b>. Сорвёшь режим — потеряешь 50 очков!",
-            parse_mode="HTML"
-        )
-
     elif call.data == "clear_ai":
         chat_histories[user_id] = []
         bot.answer_callback_query(call.id, "Память диалога очищена 🔄")
