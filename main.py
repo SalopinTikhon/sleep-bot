@@ -59,7 +59,7 @@ def ask_ai_psychologist(user_id, user_text, data):
 
     url = "https://pollinations.ai"
     payload = {
-        "model": "mistral",
+        "model": "openai",
         "messages": messages,
         "temperature": 0.7
     }
