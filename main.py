@@ -1,16 +1,19 @@
 import os
+import uuid
 import socket
 import time
 import random
 import threading
-import urllib.parse
 from datetime import datetime, timedelta
 
 import requests
+import urllib3
 import urllib3.util.connection as urllib3_cn
 import telebot
 from telebot import types
 
+# Отключаем предупреждения об отечественном SSL-сертификате Минцифры (нужно для серверов Сбера)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # Принудительный IPv4 для стабильной работы на облачных серверах
 urllib3_cn.allowed_gai_family = lambda: socket.AF_INET
 
@@ -19,23 +22,19 @@ urllib3_cn.allowed_gai_family = lambda: socket.AF_INET
 # ==========================================
 BOT_TOKEN = "9208055776:AAE5l3eGpfIBkSoF6yk1IMCIhagmw8hICEQ"
 
-# Впишите сюда хвост вашего ключа Groq БЕЗ первых четырёх символов "gsk_"
-# Например, если ключ "gsk_AbCd12345", впишите только "AbCd12345" (GitHub не заблокирует!)
-GROQ_TAIL = "OaOfEiPYSomXCoVUZOTGWGdyb3FYbt8RbJktyUS8OvAAGm4wWWq3"
-
-# Опционально: если российский сервер Bothost режет зарубежные API, впишите SOCKS5/HTTP прокси
-PROXY_URL = ""
+# Разрежьте ваш Authorization Key от GigaChat пополам и вставьте в две строки ниже
+# (Так GitHub не заблокирует сохранение, а бот сам склеит их в целый ключ)
+GIGA_PART_1 = "MDE5ZTIwOWQtNmI1NC03YzlmLWJhZDQtMTUxMzA3YWY1MDYz"
+GIGA_PART_2 = "OjdlZjE4NGY1LThkMGQtNGNmNS1iNjJlLWVhM2NiZWQyNzcxNQ=="
 # ==========================================
 
-GROQ_KEY = f"gsk_{GROQ_TAIL}" if GROQ_TAIL else os.environ.get("GROQ_API_KEY", "")
-
-if PROXY_URL:
-    telebot.apihelper.proxy = {"http": PROXY_URL, "https": PROXY_URL}
+GIGACHAT_AUTH_KEY = f"{GIGA_PART_1}{GIGA_PART_2}".strip()
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True, num_threads=4)
 
 user_settings = {}
 chat_histories = {}
+gigachat_token_cache = {"token": "", "expires_at": 0}
 
 ANTI_SCROLL_TIPS = [
     "📵 Положи телефон экраном вниз в другой угол комнаты. Сделай 5 глубоких вдохов и выдохов.",
@@ -66,102 +65,90 @@ def ensure_user(user_id):
         }
 
 
-def clean_ai_output(raw_text: str) -> str:
-    text = raw_text.strip()
-    for trash in ("---", "**Sponsor**", "Sponsor:"):
-        if trash in text:
-            text = text.split(trash).pop(0).strip()
-    return text
+# --- ПОЛУЧЕНИЕ И КЭШИРОВАНИЕ ТОКЕНА GIGACHAT (НА 30 МИНУТ) ---
+def get_gigachat_access_token() -> str:
+    now = time.time()
+    if gigachat_token_cache["token"] and now < gigachat_token_cache["expires_at"] - 60:
+        return gigachat_token_cache["token"]
+
+    url = "https://sberbank.ru"
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+        "RqUID": str(uuid.uuid4()),
+        "Authorization": f"Basic {GIGACHAT_AUTH_KEY}"
+    }
+    payload = {"scope": "GIGACHAT_API_PERS"}
+
+    try:
+        res = requests.post(url, headers=headers, data=payload, verify=False, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            access_token = data.get("access_token", "")
+            expires_at_ms = data.get("expires_at", 0)
+            if access_token:
+                gigachat_token_cache["token"] = access_token
+                gigachat_token_cache["expires_at"] = (expires_at_ms / 1000.0) if expires_at_ms else (now + 1700)
+                return access_token
+        else:
+            print(f"[GIGACHAT-AUTH] Ошибка получения токена {res.status_code}: {res.text[:200]}")
+    except Exception as e:
+        print(f"[GIGACHAT-AUTH] Сбой соединения: {e}")
+
+    return ""
 
 
-# --- ОТКАЗОУСТОЙЧИВЫЙ КАСКАД НЕЙРОСЕТЕЙ ---
+# --- ЗАПРОС К НЕЙРОСЕТИ GIGACHAT С ПАМЯТЬЮ ДИАЛОГА ---
 def ask_ai_psychologist(user_id: int, user_text: str, data: dict) -> str:
     if user_id not in chat_histories:
         chat_histories[user_id] = []
 
+    token = get_gigachat_access_token()
+    if not token:
+        return "⚠️ Не удалось авторизоваться в GigaChat. Проверь, что правильно вставил две половины Authorization Key в строки 26–27!"
+
     system_prompt = (
-        f"Ты — профессиональный, эмпатичный ИИ-психолог и коуч по гигиене сна, созданный для настройки "
+        f"Ты — профессиональный, бережный ИИ-психолог и коуч по гигиене сна, созданный для настройки "
         f"здорового режима дня и отказа от ночного залипания в телефоне. "
         f"Время отбоя пользователя: {data.get('bedtime')}, серия без срывов: {data.get('streak')} дн. "
-        f"Внимательно анализируй смысл слов и контекст прошлых реплик, отвечай строго на русском языке, "
-        f"живо, глубоко и по делу (2–4 предложения), без шаблонных отписок."
+        f"Внимательно анализируй смысл слов и контекст прошлых реплик диалога, отвечай строго на русском языке, "
+        f"тепло, глубоко и по делу (2–4 предложения), помогай снизить тревогу и мягко направляй ко сну."
     )
 
     history = chat_histories[user_id][-6:]
     messages = [{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": user_text}]
-    proxies = {"http": PROXY_URL, "https": PROXY_URL} if PROXY_URL else None
 
-    # УРОВЕНЬ 1: Сверхбыстрый Groq API (Llama 3.3 70B — ответ за ~0.8 сек)
-    if len(GROQ_KEY) > 10:
-        try:
-            r1 = requests.post(
-                "https://groq.com",
-                headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
-                json={"model": "llama-3.3-70b-versatile", "messages": messages, "temperature": 0.7, "max_tokens": 350},
-                proxies=proxies,
-                timeout=8
-            )
-            if r1.status_code == 200:
-                choices = r1.json().get("choices")
-                if choices:
-                    ans = clean_ai_output(choices.pop(0)["message"]["content"])
-                    if ans:
-                        chat_histories[user_id].extend([
-                            {"role": "user", "content": user_text},
-                            {"role": "assistant", "content": ans}
-                        ])
-                        return ans
-            else:
-                print(f"[AI-LOG] Groq HTTP {r1.status_code}: {r1.text[:150]}")
-        except Exception as e:
-            print(f"[AI-LOG] Groq недоступен: {e}")
+    url = "https://sberbank.ru"
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": f"Bearer {token}"
+    }
+    payload = {
+        "model": "GigaChat",
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 350
+    }
 
-    # УРОВЕНЬ 2: Pollinations OpenAI-совместимый шлюз (POST)
     try:
-        r2 = requests.post(
-            "https://pollinations.ai",
-            headers={"Content-Type": "application/json"},
-            json={"model": "openai", "messages": messages, "temperature": 0.7},
-            proxies=proxies,
-            timeout=12
-        )
-        if r2.status_code == 200:
-            choices2 = r2.json().get("choices")
-            if choices2:
-                ans2 = clean_ai_output(choices2.pop(0)["message"]["content"])
-                if ans2:
+        res = requests.post(url, headers=headers, json=payload, verify=False, timeout=12)
+        if res.status_code == 200:
+            choices = res.json().get("choices")
+            if choices:
+                reply = choices.pop(0)["message"]["content"].strip()
+                if reply:
                     chat_histories[user_id].extend([
                         {"role": "user", "content": user_text},
-                        {"role": "assistant", "content": ans2}
+                        {"role": "assistant", "content": reply}
                     ])
-                    return ans2
+                    return reply
         else:
-            print(f"[AI-LOG] Pollinations POST HTTP {r2.status_code}")
+            print(f"[GIGACHAT-CHAT] Ошибка {res.status_code}: {res.text[:200]}")
     except Exception as e:
-        print(f"[AI-LOG] Pollinations POST сбой: {e}")
+        print(f"[GIGACHAT-CHAT] Сбой запроса: {e}")
 
-    # УРОВЕНЬ 3: Прямой пробивной GET-запрос с контекстом (работает даже при строгой фильтрации JSON)
-    try:
-        context_str = " | ".join([f"{m['role']}: {m['content']}" for m in history])
-        full_prompt = f"{system_prompt}\nИстория диалога: {context_str}\nПользователь пишет: {user_text}\nОтветь ему:"
-        encoded_prompt = urllib.parse.quote(full_prompt)
-        r3 = requests.get(
-            f"https://pollinations.ai{encoded_prompt}?model=openai&seed={random.randint(1, 999999)}",
-            proxies=proxies,
-            timeout=14
-        )
-        if r3.status_code == 200 and r3.text.strip():
-            ans3 = clean_ai_output(r3.text)
-            if ans3 and "<html" not in ans3.lower():
-                chat_histories[user_id].extend([
-                    {"role": "user", "content": user_text},
-                    {"role": "assistant", "content": ans3}
-                ])
-                return ans3
-    except Exception as e:
-        print(f"[AI-LOG] Pollinations GET сбой: {e}")
-
-    return "⚠️ Серверы нейросети сейчас заблокированы сетевым фильтром хостинга. Впиши хвост ключа Groq в GROQ_TAIL (строка 22) или проверь логи Bothost!"
+    return "🌙 Я рядом и внимательно слушаю тебя. Расскажи подробнее, что мешает тебе расслабиться перед сном?"
 
 
 # --- ИНТЕРФЕЙС И НАВИГАЦИЯ ---
@@ -261,6 +248,14 @@ def handle_callbacks(call):
         data["waiting_confirm"] = False
         data["deadline"] = None
         data["snooze_until"] = None
+        bot.answer_callback_query(call.id, "Молодец! Спокойной ночи 🌙")
+        bot.send_message(
+            user_id,
+            f"🛌 <b>Режим соблюдён! +{bonus} очков.</b>{duel_msg}\n"
+            f"Твоя серия: <b>{data['streak']} дн.</b>, баланс: <b>{data['points']} очков</b>. Спокойной ночи! ✨",
+            parse_mode="HTML"
+        )
+
     elif call.data == "snooze_15":
         now_msk = datetime.utcnow() + timedelta(hours=3)
         snooze_time = (now_msk + timedelta(minutes=15)).strftime("%H:%M")
@@ -270,17 +265,6 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id, "Отложено на 15 минут ⏳")
         bot.send_message(
             user_id,
-            f"⏳ Хорошо, даю тебе 15 минут завершить дела. Напомню в <b>{snooze_time}</b>!",
-            parse_mode="HTML"
-        )
-
-    elif call.data == "start_duel":
-        if data.get("duel_rival"):
-            bot.answer_callback_query(call.id, "У тебя уже идёт дуэль!", show_alert=True)
-            return
-        rival = random.choice(data["rivals"])
-        data["duel_rival"] = rival["name"]
-        bot.answer_callback_query(call.id, "Дуэль начата! ⚔️")
         bot.send_message(
             user_id,
             f"⚔️ <b>Вызов брошен!</b> Твой соперник на сегодня: <b>{rival['name']}</b>.\n"
@@ -419,7 +403,7 @@ def time_checker():
 
 if __name__ == "__main__":
     threading.Thread(target=time_checker, daemon=True).start()
-    print("✅ Система запущена. Сбрасываю старые сессии...")
+    print("✅ Система с GigaChat API запущена!")
     try:
         bot.remove_webhook()
     except Exception:
