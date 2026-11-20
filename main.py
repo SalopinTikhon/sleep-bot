@@ -41,31 +41,39 @@ def ensure_user(user_id):
             "rivals": [r.copy() for r in RIVALS_POOL]
         }
 
+GROQ_KEY = "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"
+
 def ask_ai_psychologist(user_id, user_text, data):
     if user_id not in chat_histories:
         chat_histories[user_id] = []
 
     system_prompt = (
-        f"Ты — профессиональный, бережный ИИ-психолог и коуч по гигиене сна, созданный специально для настройки "
-        f"здорового режима дня и борьбы с ночным залипанием в телефоне. "
-        f"Текущее время отбоя пользователя: {data.get('bedtime')}, его серия без срывов: {data.get('streak')} дн. "
-        f"Отвечай тепло, лаконично (2–4 предложения), без канцелярита, помогай снизить вечернюю тревогу, "
-        f"отложить смартфон и мягко настроиться на спокойный сон."
+        f"Ты — профессиональный, эмпатичный ИИ-психолог и специалист по гигиене сна, созданный для помощи в настройке "
+        f"здорового режима и отказа от ночного залипания в телефоне. "
+        f"Время отбоя пользователя: {data.get('bedtime')}, серия без срывов: {data.get('streak')} дн. "
+        f"Внимательно анализируй контекст прошлых сообщений, отвечай глубоко, по делу (3–5 предложений), "
+        f"помогай разобраться в причинах бессонницы или тревоги и мягко направляй ко сну."
     )
 
     messages = [{"role": "system", "content": system_prompt}]
-    messages.extend(chat_histories[user_id][-4:])
+    # Берём последние 6 сообщений (3 ваших + 3 ответа ИИ) для живой памяти диалога
+    messages.extend(chat_histories[user_id][-6:])
     messages.append({"role": "user", "content": user_text})
 
-    url = "https://pollinations.ai"
+    url = "https://groq.com"
+    headers = {
+        "Authorization": f"Bearer {GROQ_KEY}",
+        "Content-Type": "application/json"
+    }
     payload = {
-        "model": "openai",
+        "model": "llama-3.3-70b-versatile",
         "messages": messages,
-        "temperature": 0.7
+        "temperature": 0.7,
+        "max_tokens": 400
     }
 
     try:
-        response = requests.post(url, json=payload, timeout=12)
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
         if response.status_code == 200:
             res_json = response.json()
             reply = res_json["choices"][0]["message"]["content"].strip()
@@ -73,15 +81,12 @@ def ask_ai_psychologist(user_id, user_text, data):
                 chat_histories[user_id].append({"role": "user", "content": user_text})
                 chat_histories[user_id].append({"role": "assistant", "content": reply})
                 return reply
+        else:
+            print(f"Ошибка Groq API ({response.status_code}): {response.text}")
     except Exception as e:
-        print(f"Ошибка ИИ: {e}")
+        print(f"Сбой соединения с Groq: {e}")
 
-    fallback_replies = (
-        "Я рядом и внимательно слушаю тебя. Попробуй сейчас отложить дела в сторону — что больше всего мешает тебе расслабиться перед сном? 🌙",
-        "Понимаю тебя. Давай потихоньку замедляться: сделай пару глубоких вдохов и расскажи, как прошёл твой день? ✨",
-        "Слышу тебя. Помни, что завтрашний день станет намного легче, если сейчас ты подаришь себе полноценный отдых. О чём думаешь перед сном? 🕯"
-    )
-    return random.choice(fallback_replies)
+    return "⚠️ Нейросеть временно не ответила. Проверь ключ Groq или попробуй написать ещё раз через пару секунд."
 
 # --- ПОСТОЯННАЯ НИЖНЯЯ ПАНЕЛЬ НАВИГАЦИИ ---
 def get_bottom_menu():
