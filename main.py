@@ -1,13 +1,33 @@
-import telebot
-from telebot import types
-import requests
+import socket
+import time
 import random
 import threading
-import time
 from datetime import datetime, timedelta
 
-# Вставьте сюда токен вашего ПЕРВОГО бота (трекера сна)
+import requests
+import urllib3.util.connection as urllib3_cn
+import telebot
+from telebot import types
+
+# Принудительно используем надёжный IPv4 (лечит ошибку Network is unreachable на хостингах)
+urllib3_cn.allowed_gai_family = lambda: socket.AF_INET
+
+# ==========================================
+# НАСТРОЙКИ БОТА (ЗАПОЛНИТЕ ТОЛЬКО ТОКЕН)
+# ==========================================
 BOT_TOKEN = "9208055776:AAE5l3eGpfIBkSoF6yk1IMCIhagmw8hICEQ"
+
+# Оставьте пустым "", если репозиторий на GitHub публичный (тогда заработает резервный ИИ без ключа).
+# Если загружаете файл напрямую на Bothost — можете вписать сюда свой ключ Groq ("gsk_...").
+GROQ_KEY = ""
+
+# Если сервер Bothost в РФ блокирует доступ к Telegram, впишите сюда прокси (например: "socks5h://user:pass@ip:port")
+# Если прокси не нужен — оставьте пустые кавычки ""
+PROXY_URL = ""
+# ==========================================
+
+if PROXY_URL:
+    telebot.apihelper.proxy = {"http": PROXY_URL, "https": PROXY_URL}
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -28,6 +48,7 @@ RIVALS_POOL = [
     {"name": "Елена (Дзен-сон)", "points": 510}
 ]
 
+
 def ensure_user(user_id):
     if user_id not in user_settings:
         user_settings[user_id] = {
@@ -41,61 +62,65 @@ def ensure_user(user_id):
             "rivals": [r.copy() for r in RIVALS_POOL]
         }
 
-GROQ_KEY = ""
 
 def ask_ai_psychologist(user_id, user_text, data):
     if user_id not in chat_histories:
         chat_histories[user_id] = []
 
     system_prompt = (
-        f"Ты — профессиональный, эмпатичный ИИ-психолог и специалист по гигиене сна, созданный для помощи в настройке "
-        f"здорового режима и отказа от ночного залипания в телефоне. "
-        f"Время отбоя пользователя: {data.get('bedtime')}, серия без срывов: {data.get('streak')} дн. "
-        f"Внимательно анализируй контекст прошлых сообщений, отвечай глубоко, тепло и по делу (3–5 предложений)."
+        f"Ты — профессиональный, эмпатичный ИИ-психолог и коуч по гигиене сна, созданный специально для настройки "
+        f"здорового режима дня и отказа от ночного залипания в телефоне. "
+        f"Текущее время отбоя пользователя: {data.get('bedtime')}, серия без срывов: {data.get('streak')} дн. "
+        f"Внимательно анализируй контекст прошлых сообщений, отвечай глубоко, тепло и по делу (3–5 предложений), "
+        f"помогай снизить вечернюю тревогу и мягко направляй ко сну."
     )
 
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(chat_histories[user_id][-6:])
     messages.append({"role": "user", "content": user_text})
 
-    # 1. Пробуем сверхбыстрый Groq API
-    try:
-        response = requests.post(
-            "https://groq.com",
-            headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
-            json={"model": "llama-3.3-70b-versatile", "messages": messages, "temperature": 0.7, "max_tokens": 400},
-            timeout=8
-        )
-        if response.status_code == 200:
-            choices = response.json().get("choices")
-            if choices:
-                reply = choices[0]["message"]["content"].strip()
-                chat_histories[user_id].append({"role": "user", "content": user_text})
-                chat_histories[user_id].append({"role": "assistant", "content": reply})
-                return reply
-        else:
-            print(f"Groq статус {response.status_code}: {response.text}")
-    except Exception as e:
-        print(f"Groq недоступен с IP сервера: {e}")
+    proxies = {"http": PROXY_URL, "https": PROXY_URL} if PROXY_URL else None
 
-    # 2. Резервный канал (если IP сервера в РФ заблокирован Groq)
+    # 1. Пробуем сверхбыстрый Groq API (если вписан ключ)
+    if GROQ_KEY and "gsk_" in GROQ_KEY:
+        try:
+            response = requests.post(
+                "https://groq.com",
+                headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
+                json={"model": "llama-3.3-70b-versatile", "messages": messages, "temperature": 0.7, "max_tokens": 400},
+                proxies=proxies,
+                timeout=8
+            )
+            if response.status_code == 200:
+                choices = response.json().get("choices")
+                if choices:
+                    reply = choices.pop(0)["message"]["content"].strip()
+                    chat_histories[user_id].append({"role": "user", "content": user_text})
+                    chat_histories[user_id].append({"role": "assistant", "content": reply})
+                    return reply
+        except Exception as e:
+            print(f"Groq недоступен: {e}")
+
+    # 2. Резервный бесплатный ИИ-сервер (работает без ключа и не конфликтует с GitHub)
     try:
         res2 = requests.post(
             "https://pollinations.ai",
             json={"model": "openai", "messages": messages, "temperature": 0.7},
+            proxies=proxies,
             timeout=12
         )
         if res2.status_code == 200:
             choices2 = res2.json().get("choices")
             if choices2:
-                reply2 = choices2[0]["message"]["content"].strip()
+                reply2 = choices2.pop(0)["message"]["content"].strip()
                 chat_histories[user_id].append({"role": "user", "content": user_text})
                 chat_histories[user_id].append({"role": "assistant", "content": reply2})
                 return reply2
     except Exception as e:
-        print(f"Ошибка резервного ИИ: {e}")
+        print(f"Резервный ИИ недоступен: {e}")
 
-    return "🌙 Я рядом. Расскажи подробнее, что сейчас мешает тебе расслабиться перед сном?"
+    return "🌙 Я рядом и внимательно слушаю тебя. Расскажи подробнее, какие мысли сейчас крутятся в голове и мешают расслабиться?"
+
 
 # --- ПОСТОЯННАЯ НИЖНЯЯ ПАНЕЛЬ НАВИГАЦИИ ---
 def get_bottom_menu():
@@ -110,6 +135,7 @@ def get_bottom_menu():
     )
     return markup
 
+
 def get_main_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
@@ -119,6 +145,7 @@ def get_main_keyboard():
         types.InlineKeyboardButton("🔄 Сбросить диалог с ИИ", callback_data="clear_ai")
     )
     return markup
+
 
 def get_dashboard_text(user_id):
     data = user_settings.get(user_id)
@@ -132,7 +159,8 @@ def get_dashboard_text(user_id):
         f"💬 <i>Просто напиши мне любое сообщение ниже, если не можешь уснуть или тревожишься — ИИ-психолог сразу поддержит тебя.</i>"
     )
 
-@bot.message_handler(commands=['start', 'menu'])
+
+@bot.message_handler(commands=["start", "menu"])
 def cmd_start(message):
     user_id = message.from_user.id
     ensure_user(user_id)
@@ -149,7 +177,7 @@ def cmd_start(message):
         parse_mode="HTML"
     )
 
-# --- ОБРАБОТКА ВВОДА НОВОГО ВРЕМЕНИ ОТБОЯ ---
+
 def process_new_bedtime(message):
     user_id = message.from_user.id
     ensure_user(user_id)
@@ -171,7 +199,7 @@ def process_new_bedtime(message):
             parse_mode="HTML"
         )
 
-# --- INLINE-КНОПКИ ПОД СООБЩЕНИЯМИ ---
+
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     user_id = call.from_user.id
@@ -231,7 +259,7 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id, "Память диалога очищена 🔄")
         bot.send_message(user_id, "🔄 Контекст беседы очищен. Можем начать разговор с чистого листа!")
 
-# --- ОБРАБОТКА НИЖНЕЙ ПАНЕЛИ И ЖИВОГО ЧАТА С ИИ ---
+
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
     user_id = message.from_user.id
@@ -275,7 +303,7 @@ def handle_all_messages(message):
             key=lambda x: x["points"],
             reverse=True
         )
-        board = "\n".join([f"{i+1}. {r['name']} — <b>{r['points']} очков</b>" for i, r in enumerate(rivals_sorted)])
+        board = "\n".join([f"{i + 1}. {r['name']} — <b>{r['points']} очков</b>" for i, r in enumerate(rivals_sorted)])
         bot.send_message(
             user_id,
             f"🏆 <b>ТАБЛИЦА ЛИДЕРОВ РЕЖИМА</b>\n\n{board}",
@@ -284,12 +312,11 @@ def handle_all_messages(message):
         )
         return
 
-    # Если нажата не кнопка меню — отвечает ИИ-психолог
-    bot.send_chat_action(user_id, 'typing')
+    bot.send_chat_action(user_id, "typing")
     reply = ask_ai_psychologist(user_id, text, data)
     bot.send_message(user_id, reply, reply_markup=get_bottom_menu())
 
-# --- ФОНОВЫЙ ТАЙМЕР КОНТРОЛЯ ОТБОЯ (МСК) ---
+
 def time_checker():
     while True:
         now_msk = datetime.utcnow() + timedelta(hours=3)
@@ -355,11 +382,13 @@ def time_checker():
 
         time.sleep(20)
 
-print("✅ Бот контроля сна с нижней панелью и ИИ-психологом запущен!")
+
+threading.Thread(target=time_checker, daemon=True).start()
+print("✅ Бот контроля сна запущен и готов к работе!")
 
 while True:
     try:
         bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=20)
     except Exception as e:
-        print(f"⚠️ Временный обрыв связи с Telegram ({e}). Переподключаюсь через 5 секунд...")
+        print(f"⚠️ Временный обрыв сети ({e}). Переподключаюсь через 5 секунд...")
         time.sleep(5)
