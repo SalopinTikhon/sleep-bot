@@ -1,202 +1,132 @@
-import sys
-import time
-import random
-import threading
-from datetime import datetime, timedelta, timezone
-import requests
 import telebot
 from telebot import types
+import requests
+import random
+import threading
+import time
+from datetime import datetime, timedelta
 
-sys.stdout.reconfigure(line_buffering=True)
+# Вставьте сюда токен вашего ПЕРВОГО бота (трекера сна)
+BOT_TOKEN = "9208055776:AAE5l3eGpfIBkSoF6yk1IMCIhagmw8hICEQ"
 
-# Вставьте сюда ваш токен от @BotFather внутри кавычек
-TOKEN = "9208055776:AAE5l3eGpfIBkSoF6yk1IMCIhagmw8hICEQ"
-bot = telebot.TeleBot(TOKEN)
-
-MSK = timezone(timedelta(hours=3))
-
-def get_msk_now():
-    return datetime.now(MSK)
+bot = telebot.TeleBot(BOT_TOKEN)
 
 user_settings = {}
 chat_histories = {}
 
-RIVAL_NAMES = (
-    "Алексей К.",
-    "Марина_МСК",
-    "Дмитрий (IT)",
-    "Алина С.",
-    "Макс_04",
-    "Елена В."
-)
+ANTI_SCROLL_TIPS = [
+    "📵 Положи телефон экраном вниз в другой угол комнаты. Сделай 5 глубоких вдохов и выдохов.",
+    "💧 Выпей стакан тёплой воды без газов и приглуши свет в комнате — мозг сразу начнёт вырабатывать мелатонин.",
+    "📖 Закрой соцсети прямо сейчас: ленту невозможно дочитать до конца, а утреннюю бодрость ты сохранишь только во сне.",
+    "🧘‍♂️ Закрой глаза на 60 секунд и мысленно пройдись вниманием от макушки до пяток, расслабляя каждую мышцу."
+]
 
-ANTI_SCROLL_TIPS = (
-    "🧠 <b>Психологический факт:</b> Бесконечная лента работает как игровой автомат. Мозг ждет «джекпот» в следующем видео, но вместо радости получает только истощение дофамина.\n\nПоложи телефон экраном вниз на 2 минуты и сделай 5 глубоких вдохов. Начислено <b>+20 очков</b>!",
-    "🌬 <b>Техника «4-7-8» для быстрого сна:</b>\n1. Вдохни носом на 4 счета.\n2. Задержи дыхание на 7 счетов.\n3. Медленно выдохни ртом на 8 счетов.\n\nПовтори 3 раза — пульс замедлится сам. Держи <b>+20 очков</b> за заботу о себе!",
-    "📝 <b>Выгрузка мыслей:</b> Если голова кипит от планов на завтра, мозг боится уснуть, чтобы ничего не забыть. Просто напиши мне сюда в чат всё, что тебя тревожит — я помогу разложить это по полочкам. Бонус: <b>+20 очков</b>!"
-)
+RIVALS_POOL = [
+    {"name": "Артём (Ранняя пташка)", "points": 420},
+    {"name": "Ксения (Мастер режима)", "points": 380},
+    {"name": "Максим (Ночной волк)", "points": 290},
+    {"name": "Елена (Дзен-сон)", "points": 510}
+]
 
-def safe_edit(text, chat_id, message_id, reply_markup=None):
-    try:
-        bot.edit_message_text(
-            text,
-            chat_id=chat_id,
-            message_id=message_id,
-            reply_markup=reply_markup,
-            parse_mode="HTML"
-        )
-    except Exception:
-        pass
-
-def get_rank(points):
-    if points < 100:
-        return "🦉 Ночная сова"
-    elif points < 300:
-        return "🕯 Искатель баланса"
-    elif points < 600:
-        return "🔋 Хранитель энергии"
-    elif points < 1000:
-        return "🧘 Мастер режима"
-    else:
-        return "👑 Повелитель времени"
-
-def ask_ai_psychologist(user_id, user_text, user_data):
-    if user_id not in chat_histories:
-        chat_histories.update({user_id: list()})
-    history = chat_histories.get(user_id)
-    
-    system_prompt = (
-        "Ты — глубокий, эмпатичный, умиротворяющий ИИ-психолог и проводник в спокойный сон. "
-        f"Контекст: сейчас {get_msk_now().strftime('%H:%M')} МСК, у собеседника {user_data.get('points')} очков дисциплины и цель лечь в {user_data.get('bedtime')}. "
-        "Твоя задача: внимательно проанализировать конкретные слова и эмоции пользователя и ответить строго по теме его сообщения. "
-        "Говори мягко, тепло, успокаивающе, без шаблонных фраз (3-5 живых предложений). "
-        "Помоги человеку замедлиться, снять внутреннее напряжение и мягко настроиться на отдых."
-    )
-    
-    messages = list()
-    messages.append({"role": "system", "content": system_prompt})
-    for msg in history:
-        messages.append(msg)
-    messages.append({"role": "user", "content": user_text})
-    
-    url = "https://text.pollinations.ai/openai"
-    payload = {
-        "model": "openai",
-        "messages": messages,
-        "temperature": 0.8
-    }
-    
-    try:
-        resp = requests.post(url, json=payload, timeout=20)
-        if resp.status_code == 200:
-            data_json = resp.json()
-            choices = data_json.get("choices")
-            if choices:
-                first_choice = choices.__getitem__(0)
-                answer = first_choice.get("message").get("content").strip()
-                history.append({"role": "user", "content": user_text})
-                history.append({"role": "assistant", "content": answer})
-                if len(history) > 6:
-                    chat_histories.update({user_id: history.__getitem__(slice(-6, None))})
-                return answer
-    except Exception as e:
-        print(f"Ошибка ИИ: {e}")
-        
-    return "Я внимательно тебя слушаю. Расскажи чуть подробнее, что сейчас крутится в мыслях — давай вместе разберем это и выдохнем. 🌙"
 def ensure_user(user_id):
     if user_id not in user_settings:
-        rivals = list()
-        base_scores = (150, 120, 90, 60, 40, 20)
-        for name, score in zip(RIVAL_NAMES, base_scores):
-            rivals.append({"name": name, "points": score, "streak": random.randint(1, 4)})
-            
-        user_settings.update({
-            user_id: {
-                "bedtime": "23:00",
-                "prep_time": "22:30",
-                "streak": 0,
-                "points": 50,
-                "active": False,
-                "snooze_until": None,
-                "deadline": None,
-                "waiting_confirm": False,
-                "duel_rival": None,
-                "checkin_done": False,
-                "rivals": rivals
-            }
-        })
+        user_settings[user_id] = {
+            "bedtime": "23:30",
+            "points": 100,
+            "streak": 0,
+            "waiting_confirm": False,
+            "deadline": None,
+            "snooze_until": None,
+            "duel_rival": None,
+            "rivals": [r.copy() for r in RIVALS_POOL]
+        }
 
-def update_rivals(user_id):
-    data = user_settings.get(user_id)
-    for rival in data.get("rivals"):
-        if random.random() < 0.80:
-            rival.update({"points": rival.get("points") + 50, "streak": rival.get("streak") + 1})
-        else:
-            rival.update({"points": max(0, rival.get("points") - 40), "streak": 0})
-    data.update({"checkin_done": False})
+def ask_ai_psychologist(user_id, user_text, data):
+    if user_id not in chat_histories:
+        chat_histories[user_id] = []
 
-def get_dashboard_text(user_id):
-    data = user_settings.get(user_id)
-    rank = get_rank(data.get("points"))
-    status = f"🟢 Активен (отбой в <b>{data.get('bedtime')}</b>)" if data.get("active") else f"⚪️ Не запущен (выбрано <b>{data.get('bedtime')}</b>)"
-    duel_str = f"⚔️ Дуэль с <b>{data.get('duel_rival')}</b> (на кону 50 очк.)" if data.get("duel_rival") else "⚔️ Нет активной дуэли"
-    
-    return (
-        "🌙 <b>ЦЕНТР УПРАВЛЕНИЯ СНОМ</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        f"🏅 Ранг: <b>{rank}</b>\n"
-        f"💎 Баланс: <b>{data.get('points')} очков</b> | 🔥 Серия: <b>{data.get('streak')} дн.</b>\n"
-        f"⏰ Режим: {status}\n"
-        f"{duel_str}\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "💬 <i>Можешь просто написать мне в чат, если тревожно, скучно или не спится — я отвечу как ИИ-психолог!</i>"
+    system_prompt = (
+        f"Ты — профессиональный, бережный ИИ-психолог и коуч по гигиене сна, созданный специально для настройки "
+        f"здорового режима дня и борьбы с ночным залипанием в телефоне. "
+        f"Текущее время отбоя пользователя: {data.get('bedtime')}, его серия без срывов: {data.get('streak')} дн. "
+        f"Отвечай тепло, лаконично (2–4 предложения), без канцелярита, помогай снизить вечернюю тревогу, "
+        f"отложить смартфон и мягко настроиться на спокойный сон."
     )
+
+    messages = [{"role": "system", "content": system_prompt}]
+    messages.extend(chat_histories[user_id][-4:])
+    messages.append({"role": "user", "content": user_text})
+
+    url = "https://pollinations.ai"
+    payload = {
+        "model": "mistral",
+        "messages": messages,
+        "temperature": 0.7
+    }
+
+    try:
+        response = requests.post(url, json=payload, timeout=12)
+        if response.status_code == 200:
+            res_json = response.json()
+            reply = res_json["choices"][0]["message"]["content"].strip()
+            if reply:
+                chat_histories[user_id].append({"role": "user", "content": user_text})
+                chat_histories[user_id].append({"role": "assistant", "content": reply})
+                return reply
+    except Exception as e:
+        print(f"Ошибка ИИ: {e}")
+
+    fallback_replies = (
+        "Я рядом и внимательно слушаю тебя. Попробуй сейчас отложить дела в сторону — что больше всего мешает тебе расслабиться перед сном? 🌙",
+        "Понимаю тебя. Давай потихоньку замедляться: сделай пару глубоких вдохов и расскажи, как прошёл твой день? ✨",
+        "Слышу тебя. Помни, что завтрашний день станет намного легче, если сейчас ты подаришь себе полноценный отдых. О чём думаешь перед сном? 🕯"
+    )
+    return random.choice(fallback_replies)
+
+# --- ПОСТОЯННАЯ НИЖНЯЯ ПАНЕЛЬ НАВИГАЦИИ ---
 def get_bottom_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(
+    markup.row(
         types.KeyboardButton("🏠 Главное меню"),
         types.KeyboardButton("🆘 Хочу залипнуть")
+    )
+    markup.row(
+        types.KeyboardButton("⏰ Время отбоя"),
+        types.KeyboardButton("🏆 Рейтинг и дуэли")
     )
     return markup
 
 def get_main_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("⏰ Настроить время", callback_data="menu_time"),
-        types.InlineKeyboardButton("✅ Включить контроль", callback_data="save")
-    )
-    markup.add(
-        types.InlineKeyboardButton("⚔️ Бросить вызов", callback_data="menu_duel"),
-        types.InlineKeyboardButton("🏆 Рейтинг лиги", callback_data="leaderboard")
-    )
-    markup.add(
-        types.InlineKeyboardButton("☀️ Утренний чек-ин", callback_data="morning_checkin"),
-        types.InlineKeyboardButton("🆘 Хочу залипнуть", callback_data="anti_scroll")
+        types.InlineKeyboardButton("🛏 Я в кровати!", callback_data="in_bed"),
+        types.InlineKeyboardButton("⏳ Отложить на 15 мин", callback_data="snooze_15"),
+        types.InlineKeyboardButton("⚔️ Вызвать на дуэль", callback_data="start_duel"),
+        types.InlineKeyboardButton("🔄 Сбросить диалог с ИИ", callback_data="clear_ai")
     )
     return markup
 
-def get_time_keyboard():
-    markup = types.InlineKeyboardMarkup(row_width=4)
-    presets = ("22:30", "23:00", "23:30", "00:00")
-    buttons = tuple(types.InlineKeyboardButton(t, callback_data=f"set_{t}") for t in presets)
-    markup.add(*buttons)
-    
-    markup.add(
-        types.InlineKeyboardButton("➖ 15 мин", callback_data="shift_-15"),
-        types.InlineKeyboardButton("➕ 15 мин", callback_data="shift_15")
+def get_dashboard_text(user_id):
+    data = user_settings.get(user_id)
+    duel_str = f"⚔️ Активная дуэль: <b>{data.get('duel_rival')}</b>" if data.get("duel_rival") else "⚔️ Дуэль: <i>не запущена</i>"
+    return (
+        f"🌙 <b>ТВОЙ КОНТРОЛЬ РЕЖИМА СНА</b>\n\n"
+        f"⏰ <b>Отбой по плану:</b> {data.get('bedtime')} (МСК)\n"
+        f"🔥 <b>Серия без срывов:</b> {data.get('streak')} дн.\n"
+        f"💎 <b>Баланс очков:</b> {data.get('points')}\n"
+        f"{duel_str}\n\n"
+        f"💬 <i>Просто напиши мне любое сообщение ниже, если не можешь уснуть или тревожишься — ИИ-психолог сразу поддержит тебя.</i>"
     )
-    markup.add(types.InlineKeyboardButton("✅ Сохранить и запустить", callback_data="save"))
-    markup.add(types.InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu"))
-    return markup
 
-@bot.message_handler(commands=('start', 'menu'))
+@bot.message_handler(commands=['start', 'menu'])
 def cmd_start(message):
     user_id = message.from_user.id
     ensure_user(user_id)
     bot.send_message(
         user_id,
-        "✨ Нижняя панель быстрого доступа подключена!",
-        reply_markup=get_bottom_menu()
+        "✨ <b>Панель быстрого доступа закреплена внизу экрана!</b>",
+        reply_markup=get_bottom_menu(),
+        parse_mode="HTML"
     )
     bot.send_message(
         user_id,
@@ -205,268 +135,97 @@ def cmd_start(message):
         parse_mode="HTML"
     )
 
-@bot.callback_query_handler(func=lambda call: call.data == "back_to_menu")
-def process_back(call):
-    user_id = call.from_user.id
-    ensure_user(user_id)
-    safe_edit(get_dashboard_text(user_id), user_id, call.message.message_id, get_main_keyboard())
-
-@bot.callback_query_handler(func=lambda call: call.data == "menu_time")
-def process_menu_time(call):
-    user_id = call.from_user.id
-    ensure_user(user_id)
-    data = user_settings.get(user_id)
-    safe_edit(
-        f"⏰ <b>Настройка времени отбоя (МСК)</b>\n\nСейчас выбрано: <b>{data.get('bedtime')}</b>",
-        user_id,
-        call.message.message_id,
-        get_time_keyboard()
-    )
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("set_"))
-def process_preset(call):
-    user_id = call.from_user.id
-    ensure_user(user_id)
-    _, new_time = call.data.split("_")
-    user_settings.get(user_id).update({"bedtime": new_time})
-    safe_edit(
-        f"⏰ <b>Настройка времени отбоя (МСК)</b>\n\nВыбрано время: <b>{new_time}</b>",
-        user_id,
-        call.message.message_id,
-        get_time_keyboard()
-    )
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("shift_"))
-def process_shift(call):
-    user_id = call.from_user.id
-    ensure_user(user_id)
-    _, min_str = call.data.split("_")
-    minutes = int(min_str)
-    current_str = user_settings.get(user_id).get("bedtime")
-    dt = datetime.strptime(current_str, "%H:%M") + timedelta(minutes=minutes)
-    new_time = dt.strftime("%H:%M")
-    user_settings.get(user_id).update({"bedtime": new_time})
-    safe_edit(
-        f"⏰ <b>Настройка времени отбоя (МСК)</b>\n\nВыбрано время: <b>{new_time}</b>",
-        user_id,
-        call.message.message_id,
-        get_time_keyboard()
-    )
-
-@bot.callback_query_handler(func=lambda call: call.data == "save")
-def process_save(call):
-    user_id = call.from_user.id
-    ensure_user(user_id)
-    data = user_settings.get(user_id)
-    bedtime_str = data.get("bedtime")
-    bed_dt = datetime.strptime(bedtime_str, "%H:%M")
-    prep_dt = bed_dt - timedelta(minutes=30)
-    
-    data.update({
-        "prep_time": prep_dt.strftime("%H:%M"),
-        "active": True,
-        "waiting_confirm": False,
-        "snooze_until": None,
-        "deadline": None
-    })
-    
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu"))
-    safe_edit(
-        f"✅ <b>Контракт со сном активирован!</b>\n\n"
-        f"• В <b>{prep_dt.strftime('%H:%M')}</b> мягко напомню замедлиться.\n"
-        f"• В <b>{bedtime_str}</b> проверю, в кровати ли ты.",
-        user_id,
-        call.message.message_id,
-        markup
-    )
-@bot.callback_query_handler(func=lambda call: call.data == "menu_duel")
-def process_menu_duel(call):
-    user_id = call.from_user.id
-    ensure_user(user_id)
-    data = user_settings.get(user_id)
-    
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    for idx, r in enumerate(data.get("rivals")):
-        markup.add(types.InlineKeyboardButton(f"⚔️ {r.get('name')} ({r.get('points')} очк.)", callback_data=f"duel_{idx}"))
-    markup.add(types.InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu"))
-    
-    safe_edit(
-        "⚔️ <b>ДУЭЛЬ ЗА ОЧКИ РЕЖИМА</b>\n\n"
-        "Выбери соперника на сегодняшний вечер:\n"
-        "• Если ляжешь вовремя — заберешь <b>+50 очков</b> у соперника!\n"
-        "• Если сорвешь отбой — твои <b>50 очков</b> уйдут ему.",
-        user_id,
-        call.message.message_id,
-        markup
-    )
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("duel_"))
-def process_start_duel(call):
-    user_id = call.from_user.id
-    ensure_user(user_id)
-    data = user_settings.get(user_id)
-    _, idx_str = call.data.split("_")
-    rival = data.get("rivals").__getitem__(int(idx_str))
-    data.update({"duel_rival": rival.get("name")})
-    
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu"))
-    safe_edit(
-        f"🔥 <b>Вызов принят!</b>\n\nСегодня вечером ты соревнуешься с <b>{rival.get('name')}</b>. Не дай ему забрать твои очки!",
-        user_id,
-        call.message.message_id,
-        markup
-    )
-
-@bot.callback_query_handler(func=lambda call: call.data == "anti_scroll")
-def process_anti_scroll(call):
-    user_id = call.from_user.id
-    ensure_user(user_id)
-    data = user_settings.get(user_id)
-    data.update({"points": data.get("points") + 20})
-    
-    tip = random.choice(ANTI_SCROLL_TIPS)
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu"))
-    safe_edit(f"🆘 <b>АНТИ-ЗАЛИПАНИЕ</b>\n\n{tip}", user_id, call.message.message_id, markup)
-
-@bot.callback_query_handler(func=lambda call: call.data == "morning_checkin")
-def process_morning_checkin(call):
-    user_id = call.from_user.id
-    ensure_user(user_id)
-    data = user_settings.get(user_id)
-    
-    if data.get("checkin_done"):
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu"))
-        safe_edit("☀️ Ты уже проходил утренний чек-ин сегодня! Возвращайся завтра утром.", user_id, call.message.message_id, markup)
-        return
-        
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        types.InlineKeyboardButton("⚡️ Выспался отлично! (+25 очк.)", callback_data="mood_great"),
-        types.InlineKeyboardButton("😐 Нормально, но можно лучше (+25 очк.)", callback_data="mood_ok"),
-        types.InlineKeyboardButton("😴 Разбит, лег слишком поздно (+15 очк.)", callback_data="mood_bad")
-    )
-    safe_edit("☀️ <b>УТРЕННИЙ ЧЕК-ИН</b>\n\nКак ты чувствуешь себя после пробуждения?", user_id, call.message.message_id, markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("mood_"))
-def process_mood(call):
-    user_id = call.from_user.id
-    ensure_user(user_id)
-    data = user_settings.get(user_id)
-    _, mood = call.data.split("_")
-    bonus = 15 if mood == "bad" else 25
-    data.update({"points": data.get("points") + bonus, "checkin_done": True})
-    
-    replies = {
-        "great": "Вот что делает вовремя начатый сон! Энергия на максимуме! 🚀",
-        "ok": "Отличное начало! Если сегодня ляжешь на 15 минут раньше, завтра почувствуешь еще больше легкости. 🌤",
-        "bad": "Ничего страшного, у всех бывают тяжелые ночи. Не ругай себя — сегодня вечером ляг пораньше. Я помогу! 💙"
-    }
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu"))
-    safe_edit(f"✨ <b>Начислено +{bonus} очков энергии!</b>\n\n{replies.get(mood)}", user_id, call.message.message_id, markup)
-
-@bot.callback_query_handler(func=lambda call: call.data == "leaderboard")
-def process_leaderboard(call):
-    user_id = call.from_user.id
-    ensure_user(user_id)
-    data = user_settings.get(user_id)
-    
-    players = list()
-    players.append({"name": "👉 ТЫ (Вы)", "points": data.get("points"), "streak": data.get("streak"), "is_me": True})
-    for r in data.get("rivals"):
-        players.append({"name": r.get("name"), "points": r.get("points"), "streak": r.get("streak"), "is_me": False})
-    
-    players.sort(key=lambda x: x.get("points"), reverse=True)
-    medals = ("🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣")
-    lines = list()
-    lines.append("🏆 <b>ЛИГА ЗДОРОВОГО СНА (Топ-7):</b>\n")
-    
-    for idx, p in enumerate(players):
-        medal = medals.__getitem__(idx) if idx < len(medals) else f"{idx+1}."
-        if p.get("is_me"):
-            lines.append(f"{medal} <b>{p.get('name')} — {p.get('points')} очк.</b> (серия {p.get('streak')} дн.)")
-        else:
-            lines.append(f"{medal} {p.get('name')} — {p.get('points')} очк. (серия {p.get('streak')} дн.)")
-            
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("⚔️ Бросить вызов", callback_data="menu_duel"))
-    markup.add(types.InlineKeyboardButton("🔙 В главное меню", callback_data="back_to_menu"))
-    safe_edit("\n".join(lines), user_id, call.message.message_id, markup)
-
-def send_bedtime_question(user_id):
-    data = user_settings.get(user_id)
-    duel_text = f"\n⚔️ На кону победа в дуэли против <b>{data.get('duel_rival')}</b>!" if data.get("duel_rival") else ""
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        types.InlineKeyboardButton("😴 Я в кровати! (+50 очков)", callback_data="in_bed"),
-        types.InlineKeyboardButton("⏳ Нужно еще 15 мин (-15 очков)", callback_data="snooze")
-    )
-    bot.send_message(
-        user_id,
-        f"⏰ <b>Время отбоя!</b>{duel_text}\n"
-        f"Если не ляжешь в течение 45 минут, сгорит <b>100 очков</b> и серия из <b>{data.get('streak')} дн.</b>!",
-        reply_markup=markup,
-        parse_mode="HTML"
-    )
-
-@bot.callback_query_handler(func=lambda call: call.data == "in_bed")
-def process_in_bed(call):
-    user_id = call.from_user.id
-    ensure_user(user_id)
-    data = user_settings.get(user_id)
-    
-    bonus = 50
-    duel_msg = ""
-    if data.get("duel_rival"):
-        rival_name = data.get("duel_rival")
-        bonus += 50
-        duel_msg = f"\n⚔️ <b>Победа в дуэли!</b> Ты забрал +50 очков у <b>{rival_name}</b>!"
-        for r in data.get("rivals"):
-            if r.get("name") == rival_name:
-                r.update({"points": max(0, r.get("points") - 50)})
-                
-    data.update({
-        "streak": data.get("streak") + 1,
-        "points": data.get("points") + bonus,
-        "waiting_confirm": False,
-        "snooze_until": None,
-        "deadline": None,
-        "duel_rival": None
-    })
-    
-    safe_edit(
-        f"🔥 <b>Отлично! +{bonus} очков!</b>{duel_msg}\n\n"
-        f"• Твой баланс: <b>{data.get('points')} очков</b>\n"
-        f"• Серия: <b>{data.get('streak')} дн. подряд</b>\n\n"
-        "Отложи телефон экраном вниз. Спокойной ночи! 🌙",
-        user_id,
-        call.message.message_id
-    )
-
-@bot.callback_query_handler(func=lambda call: call.data == "snooze")
-def process_snooze(call):
-    user_id = call.from_user.id
-    ensure_user(user_id)
-    data = user_settings.get(user_id)
-    snooze_dt = get_msk_now() + timedelta(minutes=15)
-    data.update({"points": max(0, data.get("points") - 15), "snooze_until": snooze_dt.strftime("%H:%M")})
-    safe_edit(
-        f"⏳ <b>Отсрочка: -15 очков.</b> Осталось: <b>{data.get('points')}</b>.\nНапишу снова через 15 минут!",
-        user_id,
-        call.message.message_id
-    )
-
-@bot.message_handler(func=lambda message: True)
-def handle_text_chat(message):
+# --- ОБРАБОТКА ВВОДА НОВОГО ВРЕМЕНИ ОТБОЯ ---
+def process_new_bedtime(message):
     user_id = message.from_user.id
     ensure_user(user_id)
-    data = user_settings.get(user_id)
-    
-    if message.text == "🏠 Главное меню":
+    text = message.text.strip()
+    try:
+        datetime.strptime(text, "%H:%M")
+        user_settings[user_id]["bedtime"] = text
+        bot.send_message(
+            user_id,
+            f"✅ Отлично! Новое время отбоя установлено на <b>{text}</b>.",
+            reply_markup=get_bottom_menu(),
+            parse_mode="HTML"
+        )
+    except ValueError:
+        bot.send_message(
+            user_id,
+            "⚠️ Неверный формат. Нажми «⏰ Время отбоя» ещё раз и введи время строго в формате <b>ЧЧ:ММ</b> (например, <code>23:15</code>).",
+            reply_markup=get_bottom_menu(),
+            parse_mode="HTML"
+        )
+
+# --- INLINE-КНОПКИ ПОД СООБЩЕНИЯМИ ---
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callbacks(call):
+    user_id = call.from_user.id
+    ensure_user(user_id)
+    data = user_settings[user_id]
+
+    if call.data == "in_bed":
+        bonus = 50
+        duel_msg = ""
+        if data.get("duel_rival"):
+            rival_name = data["duel_rival"]
+            bonus += 50
+            duel_msg = f"\n🏆 Ты победил в дуэли против <b>{rival_name}</b> (+50 очков)!"
+            data["duel_rival"] = None
+        data["points"] += bonus
+        data["streak"] += 1
+        data["waiting_confirm"] = False
+        data["deadline"] = None
+        data["snooze_until"] = None
+        bot.answer_callback_query(call.id, "Молодец! Спокойной ночи 🌙")
+        bot.send_message(
+            user_id,
+            f"🛌 <b>Режим соблюдён! +{bonus} очков.</b>{duel_msg}\n"
+            f"Твоя серия: <b>{data['streak']} дн.</b>, баланс: <b>{data['points']} очков</b>. Спокойной ночи! ✨",
+            parse_mode="HTML"
+        )
+
+    elif call.data == "snooze_15":
+        now_msk = datetime.utcnow() + timedelta(hours=3)
+        snooze_time = (now_msk + timedelta(minutes=15)).strftime("%H:%M")
+        data["snooze_until"] = snooze_time
+        data["deadline"] = (now_msk + timedelta(minutes=25)).strftime("%H:%M")
+        data["waiting_confirm"] = True
+        bot.answer_callback_query(call.id, "Отложено на 15 минут ⏳")
+        bot.send_message(
+            user_id,
+            f"⏳ Хорошо, даю тебе 15 минут завершить дела. Напомню в <b>{snooze_time}</b>!",
+            parse_mode="HTML"
+        )
+
+    elif call.data == "start_duel":
+        if data.get("duel_rival"):
+            bot.answer_callback_query(call.id, "У тебя уже идёт дуэль!", show_alert=True)
+            return
+        rival = random.choice(data["rivals"])
+        data["duel_rival"] = rival["name"]
+        bot.answer_callback_query(call.id, "Дуэль начата! ⚔️")
+        bot.send_message(
+            user_id,
+            f"⚔️ <b>Вызов брошен!</b> Твой соперник на сегодня: <b>{rival['name']}</b>.\n"
+            f"Ляг спать вовремя — получишь <b>+50 бонусных очков</b>. Сорвёшь режим — потеряешь 50 очков!",
+            parse_mode="HTML"
+        )
+
+    elif call.data == "clear_ai":
+        chat_histories[user_id] = []
+        bot.answer_callback_query(call.id, "Память диалога очищена 🔄")
+        bot.send_message(user_id, "🔄 Контекст беседы очищен. Можем начать разговор с чистого листа!")
+
+# --- ОБРАБОТКА НИЖНЕЙ ПАНЕЛИ И ЖИВОГО ЧАТА С ИИ ---
+@bot.message_handler(func=lambda message: True)
+def handle_all_messages(message):
+    user_id = message.from_user.id
+    ensure_user(user_id)
+    data = user_settings[user_id]
+    text = message.text
+
+    if text == "🏠 Главное меню":
         bot.send_message(
             user_id,
             get_dashboard_text(user_id),
@@ -474,70 +233,114 @@ def handle_text_chat(message):
             parse_mode="HTML"
         )
         return
-        
-    if message.text == "🆘 Хочу залипнуть":
-        data.update({"points": data.get("points") + 20})
-        tip = random.choice(ANTI_SCROLL_TIPS)
-        bot.send_message(user_id, f"🆘 <b>АНТИ-ЗАЛИПАНИЕ</b>\n\n{tip}", parse_mode="HTML")
-        return
-    
-    bot.send_chat_action(user_id, 'typing')
-    reply = ask_ai_psychologist(user_id, message.text, data)
-    bot.send_message(user_id, reply)
 
+    if text == "🆘 Хочу залипнуть":
+        data["points"] += 20
+        tip = random.choice(ANTI_SCROLL_TIPS)
+        bot.send_message(
+            user_id,
+            f"🆘 <b>АНТИ-ЗАЛИПАНИЕ (+20 очков за осознанность!)</b>\n\n{tip}",
+            reply_markup=get_bottom_menu(),
+            parse_mode="HTML"
+        )
+        return
+
+    if text == "⏰ Время отбоя":
+        msg = bot.send_message(
+            user_id,
+            f"⏰ Текущее время отбоя: <b>{data['bedtime']}</b>.\n"
+            f"Напиши новое время в формате <b>ЧЧ:ММ</b> (например, <code>23:00</code>):",
+            parse_mode="HTML"
+        )
+        bot.register_next_step_handler(msg, process_new_bedtime)
+        return
+
+    if text == "🏆 Рейтинг и дуэли":
+        rivals_sorted = sorted(
+            data["rivals"] + [{"name": "👑 ТЫ", "points": data["points"]}],
+            key=lambda x: x["points"],
+            reverse=True
+        )
+        board = "\n".join([f"{i+1}. {r['name']} — <b>{r['points']} очков</b>" for i, r in enumerate(rivals_sorted)])
+        bot.send_message(
+            user_id,
+            f"🏆 <b>ТАБЛИЦА ЛИДЕРОВ РЕЖИМА</b>\n\n{board}",
+            reply_markup=get_main_keyboard(),
+            parse_mode="HTML"
+        )
+        return
+
+    # Если нажата не кнопка меню — отвечает ИИ-психолог
+    bot.send_chat_action(user_id, 'typing')
+    reply = ask_ai_psychologist(user_id, text, data)
+    bot.send_message(user_id, reply, reply_markup=get_bottom_menu())
+
+# --- ФОНОВЫЙ ТАЙМЕР КОНТРОЛЯ ОТБОЯ (МСК) ---
 def time_checker():
-    last_checked_minute = ""
     while True:
-        now = get_msk_now()
-        now_str = now.strftime("%H:%M")
-        if now_str != last_checked_minute:
-            last_checked_minute = now_str
-            for user_id, data in list(user_settings.items()):
-                if now_str == "23:45":
-                    update_rivals(user_id)
-                if not data.get("active"):
-                    continue
-                if now_str == data.get("prep_time"):
+        now_msk = datetime.utcnow() + timedelta(hours=3)
+        now_str = now_msk.strftime("%H:%M")
+
+        for user_id, data in list(user_settings.items()):
+            if now_str == data.get("bedtime") and not data.get("waiting_confirm"):
+                data["waiting_confirm"] = True
+                data["deadline"] = (now_msk + timedelta(minutes=15)).strftime("%H:%M")
+                try:
                     bot.send_message(
                         user_id,
-                        "🌙 <b>До сна осталось 30 минут!</b>\nПриглуши свет и начни замедляться. Если тревожно — напиши мне сюда.",
+                        f"⏰ <b>Время отбоя ({now_str})!</b> Пора отложить телефон и ложиться спать.\n"
+                        f"У тебя есть 15 минут, чтобы подтвердить отбой, иначе сгорят очки!",
+                        reply_markup=get_main_keyboard(),
                         parse_mode="HTML"
                     )
-                if now_str == data.get("bedtime"):
-                    deadline_dt = now + timedelta(minutes=45)
-                    data.update({"waiting_confirm": True, "deadline": deadline_dt.strftime("%H:%M")})
-                    send_bedtime_question(user_id)
-                if now_str == data.get("snooze_until"):
-                    data.update({"snooze_until": None})
-                    send_bedtime_question(user_id)
-                if data.get("waiting_confirm") and now_str == data.get("deadline"):
-                    lost_streak = data.get("streak")
-                    penalty = 100
-                    duel_loss = ""
-                    if data.get("duel_rival"):
-                        rival_name = data.get("duel_rival")
-                        penalty += 50
-                        duel_loss = f"\n⚔️ Ты проиграл дуэль: <b>{rival_name}</b> забрал 50 очков!"
-                        for r in data.get("rivals"):
-                            if r.get("name") == rival_name:
-                                r.update({"points": r.get("points") + 50})
-                    new_points = max(0, data.get("points") - penalty)
-                    data.update({
-                        "waiting_confirm": False,
-                        "deadline": None,
-                        "snooze_until": None,
-                        "duel_rival": None,
-                        "streak": 0,
-                        "points": new_points
-                    })
+                except Exception:
+                    pass
+
+            if data.get("snooze_until") and now_str == data.get("snooze_until"):
+                data["snooze_until"] = None
+                try:
+                    bot.send_message(
+                        user_id,
+                        "🔔 <b>15 минут вышли!</b> Пора в кровать. Подтверди отбой прямо сейчас:",
+                        reply_markup=get_main_keyboard(),
+                        parse_mode="HTML"
+                    )
+                except Exception:
+                    pass
+
+            if data.get("waiting_confirm") and now_str == data.get("deadline"):
+                lost_streak = data.get("streak", 0)
+                penalty = 100
+                duel_loss = ""
+                if data.get("duel_rival"):
+                    rival_name = data["duel_rival"]
+                    penalty += 50
+                    duel_loss = f"\n⚔️ Ты проиграл дуэль: <b>{rival_name}</b> забрал 50 очков!"
+                    for r in data["rivals"]:
+                        if r["name"] == rival_name:
+                            r["points"] += 50
+                    data["duel_rival"] = None
+
+                new_points = max(0, data.get("points", 0) - penalty)
+                data["waiting_confirm"] = False
+                data["deadline"] = None
+                data["snooze_until"] = None
+                data["streak"] = 0
+                data["points"] = new_points
+
+                try:
                     bot.send_message(
                         user_id,
                         f"💥 <b>Режим сорван! Сгорело {penalty} очков.</b>{duel_loss}\n"
                         f"Цепочка из <b>{lost_streak} дн.</b> обнулилась, баланс: <b>{new_points} очков</b>.",
+                        reply_markup=get_bottom_menu(),
                         parse_mode="HTML"
                     )
-        time.sleep(5)
+                except Exception:
+                    pass
+
+        time.sleep(20)
 
 threading.Thread(target=time_checker, daemon=True).start()
-print("Бот успешно запущен в облаке!")
+print("✅ Бот контроля сна с нижней панелью и ИИ-психологом запущен!")
 bot.infinity_polling(skip_pending=True)
