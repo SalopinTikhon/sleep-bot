@@ -41,7 +41,7 @@ def ensure_user(user_id):
             "rivals": [r.copy() for r in RIVALS_POOL]
         }
 
-GROQ_KEY = "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"
+GROQ_KEY = ""
 
 def ask_ai_psychologist(user_id, user_text, data):
     if user_id not in chat_histories:
