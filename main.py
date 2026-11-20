@@ -265,6 +265,19 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id, "Отложено на 15 минут ⏳")
         bot.send_message(
             user_id,
+                bot.send_message(
+            user_id,
+            f"⏳ Хорошо, даю тебе 15 минут завершить дела. Напомню в <b>{snooze_time}</b>!",
+            parse_mode="HTML"
+        )
+
+    elif call.data == "start_duel":
+        if data.get("duel_rival"):
+            bot.answer_callback_query(call.id, "У тебя уже идёт дуэль!", show_alert=True)
+            return
+        rival = random.choice(data["rivals"])
+        data["duel_rival"] = rival["name"]
+        bot.answer_callback_query(call.id, "Дуэль начата! ⚔️")
         bot.send_message(
             user_id,
             f"⚔️ <b>Вызов брошен!</b> Твой соперник на сегодня: <b>{rival['name']}</b>.\n"
