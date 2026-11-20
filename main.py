@@ -355,6 +355,11 @@ def time_checker():
 
         time.sleep(20)
 
-threading.Thread(target=time_checker, daemon=True).start()
 print("✅ Бот контроля сна с нижней панелью и ИИ-психологом запущен!")
-bot.infinity_polling(skip_pending=True)
+
+while True:
+    try:
+        bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=20)
+    except Exception as e:
+        print(f"⚠️ Временный обрыв связи с Telegram ({e}). Переподключаюсь через 5 секунд...")
+        time.sleep(5)
