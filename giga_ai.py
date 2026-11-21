@@ -1,8 +1,6 @@
 import requests
 
 GROQ_TAIL = "OaOfEiPYSomXCoVUZOTGWGdyb3FYbt8RbJktyUS8OvAAGm4wWWq3"
-# Замените строку выше на ваш хвост ключа Groq из заметок (БЕЗ первых 4 символов "gsk_")
-
 GROQ_KEY = f"gsk_{GROQ_TAIL}".strip()
 chat_histories = {}
 
@@ -18,10 +16,16 @@ def ask_psychologist(user_id: int, user_text: str, data: dict) -> str:
     )
     messages = [{"role": "system", "content": prompt}] + chat_histories[user_id][-6:] + [{"role": "user", "content": user_text}]
 
+    headers = {
+        "Authorization": f"Bearer {GROQ_KEY}",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+
     try:
         res = requests.post(
             "https://groq.com",
-            headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
+            headers=headers,
             json={"model": "llama-3.3-70b-versatile", "messages": messages, "temperature": 0.7, "max_tokens": 350},
             timeout=10
         )
@@ -33,6 +37,6 @@ def ask_psychologist(user_id: int, user_text: str, data: dict) -> str:
                     {"role": "assistant", "content": reply}
                 ])
                 return reply
-        return f"⚠️ Ошибка Groq: HTTP {res.status_code} ({res.text[:100]})"
+        return f"⚠️ Ошибка Groq: HTTP {res.status_code} ({res.text[:120]})"
     except Exception as e:
         return f"⚠️ Сбой сети Groq: {e}"
