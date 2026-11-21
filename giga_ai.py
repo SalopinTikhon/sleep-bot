@@ -36,14 +36,14 @@ def ask_psychologist(user_id: int, user_text: str, data: dict) -> str:
     except Exception:
         pass
 
-    # КАНАЛ 2: Прямой GET-шлюз с контекстом (ошибка 405 исключена)
+    # КАНАЛ 2: Безопасный GET-шлюз с контекстом
     try:
         ctx = " | ".join([f"{m['role']}: {m['content']}" for m in history])
-        full_q = f"{prompt}\nКонтекст: {ctx}\nПользователь: {user_text}\nОтветь:"
-        encoded = urllib.parse.quote(full_q)
+        full_q = f"{prompt} | Контекст: {ctx} | Пользователь: {user_text} | Ответь по-русски:"
         r2 = requests.get(
-            f"https://pollinations.ai{encoded}?model=openai&seed={random.randint(1, 999999)}",
-            timeout=14
+            "https://pollinations.ai",
+            params={"prompt": full_q, "model": "openai", "seed": random.randint(1, 999999)},
+            timeout=15
         )
         if r2.status_code == 200 and r2.text.strip():
             reply2 = r2.text.strip()
@@ -55,5 +55,3 @@ def ask_psychologist(user_id: int, user_text: str, data: dict) -> str:
                 return reply2
     except Exception as e:
         return f"⚠️ Ошибка GET-канала: {e}"
-
-    return "⚠️ Оба канала не ответили. Проверьте, нажали ли вы кнопку ПЕРЕСОБРАТЬ на Bothost!"
