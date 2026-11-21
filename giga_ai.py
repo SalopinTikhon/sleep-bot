@@ -13,28 +13,6 @@ token_cache = {"token": "", "expires_at": 0}
 chat_histories = {}
 
 
-def get_token() -> str:
-    now = time.time()
-    if token_cache["token"] and now < token_cache["expires_at"] - 60:
-        return token_cache["token"]
-    try:
-        res = requests.post(
-            "https://sberbank.ru",
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Accept": "application/json",
-                "RqUID": str(uuid.uuid4()),
-                "Authorization": f"Basic {AUTH_KEY}"
-            },
-            data={"scope": "GIGACHAT_API_PERS"},
-            verify=False,
-            timeout=10
-        )
-        if res.status_code == 200:
-            data = res.json()
-            token_cache["token"] = data.get("access_token", "")
-            token_cache["expires_at"] = (data.get("expires_at", 0) / 1000.0) or (now + 1700)
-            return token_cache["token"]
 def get_token():
     now = time.time()
     if token_cache["token"] and now < token_cache["expires_at"] - 60:
@@ -68,19 +46,6 @@ def ask_psychologist(user_id: int, user_text: str, data: dict) -> str:
     if not token:
         return f"⚠️ Ошибка GigaChat: {err}"
 
-def ask_psychologist(user_id: int, user_text: str, data: dict) -> str:
-    chat_histories.setdefault(user_id, [])
-    token, err = get_token()
-    if not token:
-        return f"⚠️ Ошибка GigaChat: {err}"
-
-
-def ask_psychologist(user_id: int, user_text: str, data: dict) -> str:
-    chat_histories.setdefault(user_id, [])
-    token = get_token()
-    if not token:
-        return "⚠️ Не удалось подключиться к GigaChat. Проверьте ключ в giga_ai.py."
-
     prompt = (
         f"Ты — профессиональный, бережный ИИ-психолог и коуч по гигиене сна, созданный для настройки "
         f"здорового режима дня и отказа от ночного залипания в телефоне. "
@@ -105,8 +70,6 @@ def ask_psychologist(user_id: int, user_text: str, data: dict) -> str:
                     {"role": "assistant", "content": reply}
                 ])
                 return reply
-        print(f"[GIGACHAT-CHAT] HTTP {res.status_code}: {res.text[:150]}")
+        return f"⚠️ Ошибка ответа GigaChat: HTTP {res.status_code}"
     except Exception as e:
-        print(f"[GIGACHAT-CHAT] Сбой: {e}")
-
-    return "🌙 Я рядом и слушаю тебя. Расскажи подробнее, что мешает тебе расслабиться перед сном?"
+        return f"⚠️ Сбой запроса к GigaChat: {e}"
