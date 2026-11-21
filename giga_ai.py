@@ -1,7 +1,13 @@
-import requests
+from openai import OpenAI
 
 GROQ_TAIL = "OaOfEiPYSomXCoVUZOTGWGdyb3FYbt8RbJktyUS8OvAAGm4wWWq3"
 GROQ_KEY = f"gsk_{GROQ_TAIL}".strip()
+
+client = OpenAI(
+    api_key=GROQ_KEY,
+    base_url="https://groq.com"
+)
+
 chat_histories = {}
 
 
@@ -16,27 +22,21 @@ def ask_psychologist(user_id: int, user_text: str, data: dict) -> str:
     )
     messages = [{"role": "system", "content": prompt}] + chat_histories[user_id][-6:] + [{"role": "user", "content": user_text}]
 
-    headers = {
-        "Authorization": f"Bearer {GROQ_KEY}",
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-
     try:
-        res = requests.post(
-            "https://groq.com",
-            headers=headers,
-            json={"model": "llama-3.3-70b-versatile", "messages": messages, "temperature": 0.7, "max_tokens": 350},
-            timeout=10
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=350
         )
-        if res.status_code == 200:
-            reply = res.json()["choices"].pop(0)["message"]["content"].strip()
-            if reply:
-                chat_histories[user_id].extend([
-                    {"role": "user", "content": user_text},
-                    {"role": "assistant", "content": reply}
-                ])
-                return reply
-        return f"⚠️ Ошибка Groq: HTTP {res.status_code} ({res.text[:120]})"
+        reply = completion.choices.pop(0).message.content.strip()
+        if reply:
+            chat_histories[user_id].extend([
+                {"role": "user", "content": user_text},
+                {"role": "assistant", "content": reply}
+            ])
+            return reply
     except Exception as e:
-        return f"⚠️ Сбой сети Groq: {e}"
+        return f"⚠️ Ошибка Groq SDK: {e}"
+
+    return "🌙 Я рядом. Расскажи подробнее, что мешает тебе расслабиться перед сном?"
