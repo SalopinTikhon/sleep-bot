@@ -68,6 +68,12 @@ def ask_psychologist(user_id: int, user_text: str, data: dict) -> str:
     if not token:
         return f"⚠️ Ошибка GigaChat: {err}"
 
+def ask_psychologist(user_id: int, user_text: str, data: dict) -> str:
+    chat_histories.setdefault(user_id, [])
+    token, err = get_token()
+    if not token:
+        return f"⚠️ Ошибка GigaChat: {err}"
+
 
 def ask_psychologist(user_id: int, user_text: str, data: dict) -> str:
     chat_histories.setdefault(user_id, [])
