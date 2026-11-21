@@ -6,7 +6,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 GIGA_PART_1 = "MDE5ZTIwOWQtNmI1NC03YzlmLWJhZDQ" + "tMTUxMzA3YWY1MDYz"
-GIGA_PART_2 = "OjdlZjE4NGY1LThkMGQtNGNmNS1iNjJlLWVhM2NiZWQyNzcxNQ=="
+GIGA_PART_2 = "OmQzNDlmOTE1LTAyOTItNDUzMi05ZmM5LWJjYTgzNTQ5MjViMg=="
 AUTH_KEY = f"{GIGA_PART_1}{GIGA_PART_2}"
 
 token_cache = {"token": "", "expires_at": 0}
