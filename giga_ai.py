@@ -35,10 +35,38 @@ def get_token() -> str:
             token_cache["token"] = data.get("access_token", "")
             token_cache["expires_at"] = (data.get("expires_at", 0) / 1000.0) or (now + 1700)
             return token_cache["token"]
-        print(f"[GIGACHAT-AUTH] HTTP {res.status_code}: {res.text[:150]}")
+def get_token():
+    now = time.time()
+    if token_cache["token"] and now < token_cache["expires_at"] - 60:
+        return token_cache["token"], ""
+    try:
+        res = requests.post(
+            "https://sberbank.ru",
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "application/json",
+                "RqUID": str(uuid.uuid4()),
+                "Authorization": f"Basic {AUTH_KEY}"
+            },
+            data={"scope": "GIGACHAT_API_PERS"},
+            verify=False,
+            timeout=10
+        )
+        if res.status_code == 200:
+            data = res.json()
+            token_cache["token"] = data.get("access_token", "")
+            token_cache["expires_at"] = (data.get("expires_at", 0) / 1000.0) or (now + 1700)
+            return token_cache["token"], ""
+        return "", f"HTTP {res.status_code}: {res.text[:150]}"
     except Exception as e:
-        print(f"[GIGACHAT-AUTH] Сбой: {e}")
-    return ""
+        return "", f"Сбой сети: {e}"
+
+
+def ask_psychologist(user_id: int, user_text: str, data: dict) -> str:
+    chat_histories.setdefault(user_id, [])
+    token, err = get_token()
+    if not token:
+        return f"⚠️ Ошибка GigaChat: {err}"
 
 
 def ask_psychologist(user_id: int, user_text: str, data: dict) -> str:
