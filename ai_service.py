@@ -1,23 +1,19 @@
 import requests
-from config import OPENROUTER_KEY, AI_MODEL
+from config import OPENROUTER_KEY
 
 def ask_psychologist(user_text):
     if not OPENROUTER_KEY:
-        return "Ошибка: ключ OpenRouter пустой (проверь OR_KEY_1 и OR_KEY_2)."
-    url = "https://openrouter.ai"
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_KEY}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://t.me",
-        "X-Title": "SleepBot"
-    }
-    prompt = "Ты — добрый ИИ-сомнолог и психолог. Отвечай кратко (до 3 предложений), поддерживай и помогай настроиться на здоровый сон."
-    data = {"model": AI_MODEL, "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": user_text}]}
+        return "Ключ не задан в настройках сервера."
+    url = f"https://googleapis.com{OPENROUTER_KEY}"
+    prompt = "Ты — добрый ИИ-сомнолог и психолог. Отвечай кратко (до 3 предложений), поддерживай и помогай настроиться на здоровый сон. Сообщение пользователя: " + user_text
+    data = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
-        r = requests.post(url, headers=headers, json=data, timeout=20)
+        r = requests.post(url, json=data, timeout=20)
+        if not r.text.strip():
+            return f"Пустой ответ от сервера (код {r.status_code}). Хостинг блокирует этот домен."
         res = r.json()
-        if "choices" in res:
-            return res["choices"]["message"]["content"]
-        return f"Ответ API ({r.status_code}): {res.get('error', {}).get('message', str(res))}"
+        if "candidates" in res:
+            return res["candidates"]["content"]["parts"]["text"]
+        return f"Ответ Google ({r.status_code}): {res.get('error', {}).get('message', r.text[:150])}"
     except Exception as e:
         return f"Сбой сети: {e}"
