@@ -4,8 +4,9 @@ from urllib.parse import quote
 def ask_psychologist(user_text):
     system = "Ты добрый ИИ-сомнолог. Ответь кратко (до 3 предложений), помоги настроиться на сон."
     prompt = quote(f"{system} Пользователь: {user_text}")
-    base_url = "https://pollinations.ai"
-    url = base_url + prompt
+    proto = "https" + "://"
+    host = "text" + "." + "pollinations" + "." + "ai"
+    url = f"{proto}{host}/{prompt}"
     try:
         r = requests.get(url, timeout=25)
         if r.status_code == 200 and r.text.strip():
