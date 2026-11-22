@@ -1,21 +1,14 @@
 import requests
-from config import OPENROUTER_KEY
+from urllib.parse import quote
 
 def ask_psychologist(user_text):
-    if not OPENROUTER_KEY:
-        return "Ключ не задан в настройках сервера."
-    base = "https://googleapis.com"
-    path = "/v1beta/models/gemini-2.0-flash:generateContent"
-    url = f"{base}{path}?key={OPENROUTER_KEY}"
-    prompt = "Ты — добрый ИИ-сомнолог и психолог. Отвечай кратко (до 3 предложений), поддерживай и помогай настроиться на здоровый сон. Сообщение: " + user_text
-    data = {"contents": [{"parts": [{"text": prompt}]}]}
+    system_prompt = "Ты — добрый ИИ-сомнолог и психолог. Отвечай кратко (до 3 предложений), поддерживай и помогай настроиться на здоровый сон."
+    full_prompt = f"{system_prompt}\nПользователь: {user_text}\nПсихолог:"
+    url = f"https://pollinations.ai{quote(full_prompt)}?model=openai"
     try:
-        r = requests.post(url, json=data, timeout=20)
-        if not r.text.strip():
-            return f"Пустой ответ от сервера (код {r.status_code})."
-        res = r.json()
-        if "candidates" in res:
-            return res["candidates"]["content"]["parts"]["text"]
-        return f"Ответ Google ({r.status_code}): {res.get('error', {}).get('message', r.text[:150])}"
-    except Exception:
-        return "Сбой соединения с сервером ИИ. Попробуй через минуту."
+        r = requests.get(url, timeout=20)
+        if r.status_code == 200 and r.text.strip():
+            return r.text.strip()
+        return f"Сервер ИИ временно занят (код {r.status_code}). Попробуй через минуту."
+    except Exception as e:
+        return f"Ошибка соединения: {type(e).__name__}"
