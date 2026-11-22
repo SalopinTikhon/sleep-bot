@@ -70,4 +70,5 @@ def ai_chat(m):
 if __name__ == "__main__":
     init_db()
     start_scheduler(bot)
-    bot.infinity_polling()
+    bot.remove_webhook()
+    bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=10)
