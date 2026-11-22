@@ -67,7 +67,10 @@ def ai_chat(m):
     ans = ask_psychologist(m.text)
     bot.send_message(m.chat.id, f"🧠 {ans}", reply_markup=main_kb())
 
+import time
+
 if __name__ == "__main__":
+    time.sleep(5)
     init_db()
     start_scheduler(bot)
     bot.remove_webhook()
